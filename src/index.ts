@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import * as draft from "./draft";
 import {
-  isValidSymbol,
   isValidMarket,
+  isValidSymbol,
   type MarketPlatform,
 } from "./validation";
 import { isSymbolAvailableOnMarket } from "./markets";
@@ -10,6 +10,8 @@ import { isSymbolAvailableOnMarket } from "./markets";
 const app = new Hono();
 
 await draft.createTable();
+
+await draft.updateCryptoPrices();
 
 app.get("/crypto", async (c) => {
   const symbol = c.req.query("symbol");
@@ -45,7 +47,18 @@ app.get("/crypto", async (c) => {
     }
   }
 
-  if (!startTime || Number.isNaN(Number(startTime))) {
+  if (!startTime) {
+    return c.json(
+      {
+        error: "startTime is required",
+      },
+      400,
+    );
+  }
+
+  const startTimeNumber = Number(startTime);
+
+  if (Number.isNaN(startTimeNumber)) {
     return c.json(
       {
         error: "startTime must be milliseconds",
@@ -54,7 +67,6 @@ app.get("/crypto", async (c) => {
     );
   }
 
-  const startTimeNumber = Number(startTime);
   const data = await draft.getCryptoInfo(
     symbol,
     startTimeNumber,

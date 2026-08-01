@@ -1,22 +1,21 @@
 import { SQL } from "bun";
-import uniqueSymbols from "../symbols/unique_symbols.json";
+
 import type { MarketPlatform } from "./validation";
-import { getAllMarketsPrice } from "./api";
+import type { CryptoInfo } from "./api";
+
+import {
+  getCoinBasePrices,
+  getCoinMarketCapPrices,
+  getKucoinPrices,
+} from "./api";
 
 const db = new SQL({
   url: "sqlite://./database/crypto.db",
 });
 
-export interface CryptoInfo {
-  symbol: string;
-  market: MarketPlatform;
-  price: number;
-  created_time: number;
-}
-
 export async function createTable() {
   await db`
-  CREATE TABLE IF NOT EXISTS crypto_details (
+    CREATE TABLE IF NOT EXISTS crypto_details (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       symbol TEXT NOT NULL,
       market TEXT NOT NULL,
@@ -27,24 +26,19 @@ export async function createTable() {
 
   await db`
     CREATE INDEX IF NOT EXISTS crypto_index
-    ON crypto_details(
-      symbol,
-      market,
-      created_time)
+    ON crypto_details(symbol, market, created_time)
   `;
 }
 
 export async function saveCrypto(data: CryptoInfo) {
   await db`
-    INSERT INTO crypto_details
-    (
+    INSERT INTO crypto_details (
       symbol,
       market,
       price,
       created_time
     )
-    VALUES
-    (
+    VALUES (
       ${data.symbol},
       ${data.market},
       ${data.price},
@@ -70,24 +64,27 @@ export async function getCryptoInfo(
   }
 
   return db`
-    SELECT symbol, AVG(price) AS average_price
+    SELECT
+      created_time,
+      AVG(price) AS average_price
     FROM crypto_details
     WHERE symbol = ${symbol}
     AND created_time >= ${startTime}
-    GROUP BY symbol
+    GROUP BY created_time
+    ORDER BY created_time DESC
   `;
 }
 
 export async function updateCryptoPrices() {
-  for (const symbol of uniqueSymbols) {
-    try {
-      const prices = await getAllMarketsPrice(symbol);
-      for (const crypto of prices) {
-        await saveCrypto(crypto);
-      }
-      console.log(`${symbol} updated`);
-    } catch (error) {
-      console.log(`${symbol} update failed`, error);
-    }
+  const [coinBasePrices, coinMarketCapPrices, kucoinPrices] = await Promise.all(
+    [getCoinBasePrices(), getCoinMarketCapPrices(), getKucoinPrices()],
+  );
+
+  const prices = [...coinBasePrices, ...coinMarketCapPrices, ...kucoinPrices];
+
+  for (const crypto of prices) {
+    await saveCrypto(crypto);
   }
+
+  console.log(`Saved ${prices.length} prices`);
 }

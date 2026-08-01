@@ -1,6 +1,4 @@
-import { isSymbolAvailableOnMarket } from "./markets";
 import type { MarketPlatform } from "./validation";
-
 export interface CryptoInfo {
   symbol: string;
   market: MarketPlatform;
@@ -8,78 +6,88 @@ export interface CryptoInfo {
   created_time: number;
 }
 
-export async function getCoinBasePrice(symbol: string): Promise<number> {
-  const response = await fetch(
-    `https://api.exchange.coinbase.com/products/${symbol}-USD/ticker`,
-  );
+export async function getCoinBasePrices(): Promise<CryptoInfo[]> {
+  const response = await fetch("https://api.coinbase.com/v2/exchange-rates");
+
   if (!response.ok) {
     throw new Error("CoinBase API error");
   }
   const data = await response.json();
-  return Number(data.price);
+  const created_time = Date.now();
+  const prices: CryptoInfo[] = [];
+  for (const [symbol, rate] of Object.entries(data.data.rates)) {
+    const value = Number(rate);
+
+    if (!Number.isFinite(value) || value <= 0) {
+      continue;
+    }
+
+    prices.push({
+      symbol,
+      market: "CoinBase",
+      price: 1 / value,
+      created_time,
+    });
+  }
+
+  return prices;
 }
 
-export async function getCoinMarketCapPrice(symbol: string): Promise<number> {
+export async function getCoinMarketCapPrices(): Promise<CryptoInfo[]> {
   const response = await fetch(
-    `https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol=${symbol}`,
+    "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest?limit=5000",
     {
-      headers: { "X-CMC_PRO_API_KEY": process.env.CMC_API_KEY! },
+      headers: {
+        "X-CMC_PRO_API_KEY": process.env.CMC_API_KEY!,
+      },
     },
   );
 
   if (!response.ok) {
+    console.log(await response.text());
     throw new Error("CoinMarketCap API error");
   }
+
   const data = await response.json();
-  return Number(data.data[symbol].quote.USD.price);
+
+  const created_time = Date.now();
+
+  const prices: CryptoInfo[] = [];
+
+  for (const coin of data.data) {
+    prices.push({
+      symbol: coin.symbol,
+      market: "CoinMarketCap",
+      price: Number(coin.quote.USD.price),
+      created_time,
+    });
+  }
+
+  return prices;
 }
-export async function getKucoinPrice(symbol: string): Promise<number> {
+
+export async function getKucoinPrices(): Promise<CryptoInfo[]> {
   const response = await fetch(
-    `https://api.kucoin.com/api/v1/market/orderbook/level1?symbol=${symbol}-USDT`,
+    "https://api.kucoin.com/api/v1/market/allTickers",
   );
 
   if (!response.ok) {
     throw new Error("Kucoin API error");
   }
   const data = await response.json();
-  return Number(data.data.price);
-}
-export async function getAllMarketsPrice(
-  symbol: string,
-): Promise<CryptoInfo[]> {
-  const result: CryptoInfo[] = [];
+  const created_time = Date.now();
+  const prices: CryptoInfo[] = [];
+  for (const ticker of data.data.ticker) {
+    if (!ticker.symbol.endsWith("-USDT")) {
+      continue;
+    }
 
-  if (isSymbolAvailableOnMarket(symbol, "CoinBase")) {
-    const price = await getCoinBasePrice(symbol);
-
-    result.push({
-      symbol,
-      market: "CoinBase",
-      price,
-      created_time: Date.now(),
-    });
-  }
-
-  if (isSymbolAvailableOnMarket(symbol, "CoinMarketCap")) {
-    const price = await getCoinMarketCapPrice(symbol);
-
-    result.push({
-      symbol,
-      market: "CoinMarketCap",
-      price,
-      created_time: Date.now(),
-    });
-  }
-
-  if (isSymbolAvailableOnMarket(symbol, "Kucoin")) {
-    const price = await getKucoinPrice(symbol);
-    result.push({
-      symbol,
+    prices.push({
+      symbol: ticker.symbol.replace("-USDT", ""),
       market: "Kucoin",
-      price,
-      created_time: Date.now(),
+      price: Number(ticker.last),
+      created_time,
     });
   }
-
-  return result;
+  return prices;
 }
