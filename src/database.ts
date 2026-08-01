@@ -1,5 +1,4 @@
 import { SQL } from "bun";
-
 import type { MarketPlatform } from "./validation";
 import type { CryptoInfo } from "./api";
 
@@ -16,17 +15,16 @@ const db = new SQL({
 export async function createTable() {
   await db`
     CREATE TABLE IF NOT EXISTS crypto_details (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      symbol TEXT NOT NULL,
-      market TEXT NOT NULL,
-      price REAL NOT NULL,
-      created_time INTEGER NOT NULL
-    )
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  symbol VARCHAR(20) NOT NULL,
+  market VARCHAR(50) NOT NULL,
+  price DECIMAL(20,8) NOT NULL,
+  created_time BIGINT NOT NULL)
   `;
 
   await db`
-    CREATE INDEX IF NOT EXISTS crypto_index
-    ON crypto_details(symbol, market, created_time)
+  CREATE INDEX crypto_index
+  ON crypto_details(symbol, market, created_time);
   `;
 }
 
