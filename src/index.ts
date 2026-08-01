@@ -1,41 +1,66 @@
 import { Hono } from "hono";
-
-import { createTable, getCryptoInfo, checkData} from "./draft";
-
-import * as validation from "./validation";
+import * as draft from "./draft";
+import {
+  isValidSymbol,
+  isValidMarket,
+  type MarketPlatform,
+} from "./validation";
+import { isSymbolAvailableOnMarket } from "./markets";
 
 const app = new Hono();
-await createTable();
-await checkData();
+
+await draft.createTable();
 
 app.get("/crypto", async (c) => {
   const symbol = c.req.query("symbol");
   const market = c.req.query("market");
-  const period = c.req.query("period");
+  const startTime = c.req.query("startTime");
 
-  if (!symbol || !validation.isValidSymbol(symbol)) {
-    return c.json({ error: "Invalid symbol" }, 400);
+  if (!symbol || !isValidSymbol(symbol)) {
+    return c.json(
+      {
+        error: "Unknown cryptocurrency",
+      },
+      400,
+    );
   }
-
-  if (!period || !validation.isValidPeriod(period)) {
-    return c.json({ error: "Invalid period" }, 400);
-  }
-
-  let validMarket: validation.MarketPlatform | undefined;
 
   if (market) {
-    if (!validation.isValidMarket(market)) {
-      return c.json({ error: "Invalid market" }, 400);
+    if (!isValidMarket(market)) {
+      return c.json(
+        {
+          error: "Unknown market",
+        },
+        400,
+      );
     }
 
-    validMarket = market;
+    if (!isSymbolAvailableOnMarket(symbol, market)) {
+      return c.json(
+        {
+          error: "Symbol not available on this market",
+        },
+        400,
+      );
+    }
   }
 
-  const startTime = validation.getPeriodMillisec(period);
+  if (!startTime || Number.isNaN(Number(startTime))) {
+    return c.json(
+      {
+        error: "startTime must be milliseconds",
+      },
+      400,
+    );
+  }
 
-  const data = await getCryptoInfo(symbol, startTime, validMarket);
+  const startTimeNumber = Number(startTime);
+  const data = await draft.getCryptoInfo(
+    symbol,
+    startTimeNumber,
+    market as MarketPlatform | undefined,
+  );
 
   return c.json(data);
 });
-
 export default app;
