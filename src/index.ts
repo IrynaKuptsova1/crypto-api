@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import * as draft from "./draft";
+import * as queries from "./database";
+import { startCron } from "./cron";
 import {
   isValidMarket,
   isValidSymbol,
@@ -9,9 +10,9 @@ import { isSymbolAvailableOnMarket } from "./markets";
 
 const app = new Hono();
 
-await draft.createTable();
-
-await draft.updateCryptoPrices();
+await queries.createTable();
+await queries.updateCryptoPrices();
+startCron();
 
 app.get("/crypto", async (c) => {
   const symbol = c.req.query("symbol");
@@ -67,7 +68,7 @@ app.get("/crypto", async (c) => {
     );
   }
 
-  const data = await draft.getCryptoInfo(
+  const data = await queries.getCryptoInfo(
     symbol,
     startTimeNumber,
     market as MarketPlatform | undefined,

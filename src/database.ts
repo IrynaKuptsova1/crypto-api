@@ -10,7 +10,7 @@ import {
 } from "./api";
 
 const db = new SQL({
-  url: "sqlite://./database/crypto.db",
+  url: process.env.DATABASE_URL,
 });
 
 export async function createTable() {
@@ -70,7 +70,7 @@ export async function getCryptoInfo(
     FROM crypto_details
     WHERE symbol = ${symbol}
     AND created_time >= ${startTime}
-    GROUP BY created_time
+    GROUP BY FLOOR(created_time / 300000)
     ORDER BY created_time DESC
   `;
 }
