@@ -36,7 +36,6 @@ export async function testUpdate() {
   console.log("updated");
 }
 
-await queries.createTable();
 await queries.updateCryptoPrices();
 const result = await db`SELECT 1`;
 console.log(result);

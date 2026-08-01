@@ -12,22 +12,6 @@ const db = new SQL({
   url: process.env.DATABASE_URL,
 });
 
-export async function createTable() {
-  await db`
-    CREATE TABLE IF NOT EXISTS crypto_details (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  symbol VARCHAR(20) NOT NULL,
-  market VARCHAR(50) NOT NULL,
-  price DECIMAL(20,8) NOT NULL,
-  created_time BIGINT NOT NULL)
-  `;
-
-  await db`
-  CREATE INDEX crypto_index
-  ON crypto_details(symbol, market, created_time);
-  `;
-}
-
 export async function saveCrypto(data: CryptoInfo) {
   await db`
     INSERT INTO crypto_details (
@@ -61,28 +45,40 @@ export async function getCryptoInfo(
     `;
   }
 
-  return db`
-    SELECT
-      created_time,
-      AVG(price) AS average_price
+  const result = await db`
+    SELECT MAX(created_time) AS created_time, AVG(price) AS average_price
     FROM crypto_details
     WHERE symbol = ${symbol}
     AND created_time >= ${startTime}
     GROUP BY FLOOR(created_time / 300000)
     ORDER BY created_time DESC
+
   `;
+
+  return result.map((item: any) => ({
+    ...item,
+    average_price: Number(item.average_price),
+  }));
 }
 
 export async function updateCryptoPrices() {
-  const [coinBasePrices, coinMarketCapPrices, kucoinPrices] = await Promise.all(
-    [getCoinBasePrices(), getCoinMarketCapPrices(), getKucoinPrices()],
-  );
+  const results = await Promise.allSettled([
+    getCoinBasePrices(),
+    getCoinMarketCapPrices(),
+    getKucoinPrices(),
+  ]);
+  const prices: CryptoInfo[] = [];
 
-  const prices = [...coinBasePrices, ...coinMarketCapPrices, ...kucoinPrices];
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      prices.push(...result.value);
+    } else {
+      console.error("Market API error:", result.reason);
+    }
+  }
 
   for (const crypto of prices) {
     await saveCrypto(crypto);
   }
-
   console.log(`Saved ${prices.length} prices`);
 }
