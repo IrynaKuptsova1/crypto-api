@@ -1,7 +1,5 @@
 import { SQL } from "bun";
 import type { MarketPlatform } from "./validation";
-import type { CryptoInfo } from "./api";
-
 import {
   getCoinBasePrices,
   getCoinMarketCapPrices,
@@ -11,7 +9,6 @@ import {
 const irasNewDialectForgoodDatabases = new SQL({
   url: process.env.DATABASE_URL,
 });
-
 export async function getCryptoInfo(
   symbol: string,
   startTime: number,
@@ -35,7 +32,6 @@ export async function getCryptoInfo(
     AND created_time >= ${startTime}
     GROUP BY FLOOR(created_time / 300000)
     ORDER BY created_time DESC
-
   `;
 
   return result.map((item: any) => ({
@@ -43,28 +39,36 @@ export async function getCryptoInfo(
     average_price: Number(item.average_price),
   }));
 }
+
 export async function updateCryptoPrices() {
+  const markets: MarketPlatform[] = ["CoinBase", "CoinMarketCap", "Kucoin"];
   const results = await Promise.allSettled([
     getCoinBasePrices(),
     getCoinMarketCapPrices(),
     getKucoinPrices(),
   ]);
 
-  const rows = [];
+  const rows: Array<{
+    symbol: string;
+    market: MarketPlatform;
+    price: number;
+    created_time: number;
+  }> = [];
+  const created_time = Date.now();
 
-  for (const result of results) {
+  results.forEach((result, index) => {
     if (result.status === "fulfilled") {
-      for (const currency of result.value) {
+      const market = markets[index]; 
+      for (const [symbol, price] of Object.entries(result.value)) {
         rows.push({
-          symbol: currency.symbol,
-          market: currency.market,
-          price: currency.price,
-          created_time: currency.created_time,
+          symbol,
+          market,
+          price,
+          created_time,
         });
       }
     }
-  }
-
+  });
   if (rows.length > 0) {
     await irasNewDialectForgoodDatabases`
   INSERT INTO crypto_details
