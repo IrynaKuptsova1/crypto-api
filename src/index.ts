@@ -1,15 +1,16 @@
 import { Hono } from "hono";
 import * as queries from "./database";
-import { startCron } from "./cron";
 import { SQL } from "bun";
-
+import coinbaseSymbols from "../symbols/coinbase_symbols.json";
+import cmcSymbols from "../symbols/cmc_symbols.json";
+import kucoinSymbols from "../symbols/kucoin_symbols.json";
 import {
   isValidMarket,
   isValidSymbol,
   type MarketPlatform,
 } from "./validation";
 
-import { isSymbolAvailableOnMarket } from "./markets";
+import { updateCryptoPrices } from "./database";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is missing in .env");
@@ -58,7 +59,17 @@ async function initDatabase() {
 }
 
 await initDatabase();
-startCron();
+
+Bun.cron("*/5 * * * *", async () => {
+  console.log("Updating cryptocurrency prices");
+
+  try {
+    await updateCryptoPrices();
+    console.log("Update completed");
+  } catch (error) {
+    console.error("Update failed:", error);
+  }
+});
 
 const app = new Hono();
 
@@ -86,7 +97,13 @@ app.get("/crypto", async (c) => {
       );
     }
 
-    if (!isSymbolAvailableOnMarket(symbol, market)) {
+    const marketSymbolsMap: Record<string, string[]> = {
+      CoinBase: coinbaseSymbols,
+      CoinMarketCap: cmcSymbols,
+      Kucoin: kucoinSymbols,
+    };
+
+    if (!marketSymbolsMap[market]?.includes(symbol)) {
       return c.json(
         {
           error: "Symbol not available on this market",

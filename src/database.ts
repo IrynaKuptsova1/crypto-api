@@ -8,26 +8,9 @@ import {
   getKucoinPrices,
 } from "./api";
 
-const db = new SQL({
+const irasNewDialectForgoodDatabases = new SQL({
   url: process.env.DATABASE_URL,
 });
-
-export async function saveCrypto(data: CryptoInfo) {
-  await db`
-    INSERT INTO crypto_details (
-      symbol,
-      market,
-      price,
-      created_time
-    )
-    VALUES (
-      ${data.symbol},
-      ${data.market},
-      ${data.price},
-      ${data.created_time}
-    )
-  `;
-}
 
 export async function getCryptoInfo(
   symbol: string,
@@ -35,7 +18,7 @@ export async function getCryptoInfo(
   market?: MarketPlatform,
 ) {
   if (market) {
-    return db`
+    return irasNewDialectForgoodDatabases`
       SELECT *
       FROM crypto_details
       WHERE symbol = ${symbol}
@@ -45,7 +28,7 @@ export async function getCryptoInfo(
     `;
   }
 
-  const result = await db`
+  const result = await irasNewDialectForgoodDatabases`
     SELECT MAX(created_time) AS created_time, AVG(price) AS average_price
     FROM crypto_details
     WHERE symbol = ${symbol}
@@ -60,25 +43,32 @@ export async function getCryptoInfo(
     average_price: Number(item.average_price),
   }));
 }
-
 export async function updateCryptoPrices() {
   const results = await Promise.allSettled([
     getCoinBasePrices(),
     getCoinMarketCapPrices(),
     getKucoinPrices(),
   ]);
-  const prices: CryptoInfo[] = [];
+
+  const rows = [];
 
   for (const result of results) {
     if (result.status === "fulfilled") {
-      prices.push(...result.value);
-    } else {
-      console.error("Market API error:", result.reason);
+      for (const currency of result.value) {
+        rows.push({
+          symbol: currency.symbol,
+          market: currency.market,
+          price: currency.price,
+          created_time: currency.created_time,
+        });
+      }
     }
   }
 
-  for (const crypto of prices) {
-    await saveCrypto(crypto);
+  if (rows.length > 0) {
+    await irasNewDialectForgoodDatabases`
+  INSERT INTO crypto_details
+  ${irasNewDialectForgoodDatabases(rows, "symbol", "market", "price", "created_time")}
+`;
   }
-  console.log(`Saved ${prices.length} prices`);
 }
