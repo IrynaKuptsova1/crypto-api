@@ -9,9 +9,8 @@ import {
   isValidSymbol,
   type MarketPlatform,
 } from "./validation";
-
 import { updateCryptoPrices } from "./database";
-
+import { cors } from "hono/cors";
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is missing in .env");
 }
@@ -19,6 +18,7 @@ if (!process.env.DATABASE_URL) {
 const db = new SQL({
   url: process.env.DATABASE_URL,
 });
+
 async function initDatabase() {
   try {
     await db`SELECT 1`;
@@ -72,6 +72,8 @@ Bun.cron("*/5 * * * *", async () => {
 });
 
 const app = new Hono();
+
+app.use("*", cors());
 
 app.get("/crypto", async (c) => {
   const symbol = c.req.query("symbol");
