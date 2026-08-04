@@ -38,7 +38,7 @@ export async function getCoinMarketCapPrices(): Promise<CryptoInfo> {
   const data = await response.json();
   const prices: CryptoInfo = {};
   for (const coin of data.data) {
-    prices[coin.symbol] = Number(coin.quote.USD.price);
+    prices[coin.symbol] = Number(coin.quote.USD.price)/100;
   }
   return prices;
 }
