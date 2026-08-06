@@ -1,4 +1,4 @@
-import type { MarketPlatform } from "./validation";
+
 export type CryptoInfo = {
   [symbol: string]: number;
 };
@@ -55,7 +55,7 @@ export async function getKucoinPrices(): Promise<CryptoInfo> {
     throw new Error("Kucoin API error");
   }
   const data = await response.json();
-  const prices: CryptoInfo = {};
+  const prices: CryptoInfo = {}; 
   for (const [symbol, price] of Object.entries(data.data)) {
     prices[symbol] = Number(price);
   }
