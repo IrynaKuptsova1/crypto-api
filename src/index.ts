@@ -11,6 +11,7 @@ import {
 } from "./validation";
 import { updateCryptoPrices } from "./database";
 import { cors } from "hono/cors";
+import telegram from "./telegram";
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is missing in .env");
 }
@@ -138,10 +139,11 @@ app.get("/crypto", async (c) => {
   const data = await queries.getCryptoInfo(
     symbol,
     startTimeNumber,
-    market as MarketPlatform | undefined,
+    market as MarketPlatform,
   );
 
   return c.json(data);
 });
+app.route("/telegram", telegram);
 
 export default app;

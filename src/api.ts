@@ -61,3 +61,37 @@ export async function getKucoinPrices(): Promise<CryptoInfo> {
   }
   return prices;
 }
+
+
+if (!process.env.TELEGRAM_TOKEN) {
+  throw new Error("TELEGRAM_TOKEN is missing");
+}
+
+export async function sendMessage(
+  chatId: number,
+  text: string,
+) {
+  const response = await fetch(
+    `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+      }),
+    },
+  );
+
+
+  if (!response.ok) {
+    throw new Error(
+      `Telegram error: ${await response.text()}`
+    );
+  }
+
+
+  return response.json();
+}
