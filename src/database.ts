@@ -121,3 +121,21 @@ export async function addFavourite(chatId: number, symbol: string) {
     symbol,
   });
 }
+
+export async function isFavourite(chatId: number, symbol: string) {
+  const result = await db
+    .select()
+    .from(FAVORITES)
+    .where(and(eq(FAVORITES.chatId, chatId), eq(FAVORITES.symbol, symbol)));
+
+  return result.length > 0;
+}
+
+export async function getFavourite(chatId: number) {
+  return db.select().from(FAVORITES).where(eq(FAVORITES.chatId, chatId));
+}
+export async function deleteFavourite(chatId: number, symbol: string) {
+  await db
+    .delete(FAVORITES)
+    .where(and(eq(FAVORITES.chatId, chatId), eq(FAVORITES.symbol, symbol)));
+}
