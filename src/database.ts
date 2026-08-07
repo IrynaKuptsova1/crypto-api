@@ -36,6 +36,8 @@ export async function getCryptoInfo(
         ),
       )
       .orderBy(desc(CRYPTO_DETAILS.createdTime));
+
+    return result;
   }
 
   // const result = await irasNewDialectForgoodDatabases`
@@ -60,9 +62,9 @@ export async function getCryptoInfo(
     .groupBy(sql`FLOOR(${CRYPTO_DETAILS.createdTime} / 300000)`)
     .orderBy(desc(sql`MAX(${CRYPTO_DETAILS.createdTime})`));
 
-  return result.map((item: any) => ({
-    ...item,
-    average_price: Number(item.average_price),
+  return result.map((item) => ({
+    createdTime: Number(item.createdTime),
+    averagePrice: Number(item.averagePrice),
   }));
 }
 
@@ -96,33 +98,47 @@ export async function updateCryptoPrices() {
       }
     }
   });
-  if (rows.length > 0) {
-    //   await irasNewDialectForgoodDatabases`
-    //   INSERT INTO crypto_details
-    //   ${irasNewDialectForgoodDatabases(rows, "symbol", "market", "price", "created_time")}
-    // `;
 
-    await db.insert(CRYPTO_DETAILS).values(rows);
+  if (rows.length === 0) {
+    return;
   }
+  //     await db`
+  //   INSERT INTO crypto_details
+  //   ${db(rows, "symbol", "market", "price", "created_time")}
+  // `;
+  await db.insert(CRYPTO_DETAILS).values(rows);
 }
 
 export async function addFavourite(chatId: number, symbol: string) {
+  // await db` SELECT *
+  // FROM favorites
+  // WHERE chat_id = ${chatId}
+  // AND symbol = ${symbol}
+
   const exists = await db
     .select()
     .from(FAVORITES)
     .where(and(eq(FAVORITES.chatId, chatId), eq(FAVORITES.symbol, symbol)));
-
   if (exists.length > 0) {
     return;
   }
-
-  await db.insert(FAVORITES).values({
-    chatId,
-    symbol,
-  });
+  //await db` INSERT INTO favorites (chat_id,symbol) VALUES ()
+  await db.insert(FAVORITES).values({ chatId, symbol });
 }
 
+export async function deleteFavourite(chatId: number, symbol: string) {
+  //await db` DELETE FROM favorites
+  //WHERE chat_id = ${chatId} AND symbol = ${symbol};
+
+  await db
+    .delete(FAVORITES)
+    .where(and(eq(FAVORITES.chatId, chatId), eq(FAVORITES.symbol, symbol)));
+}
 export async function isFavourite(chatId: number, symbol: string) {
+  //await db` SELECT *
+  // FROM favorites
+  //WHERE chat_id = ${chatId} AND symbol = ${symbol};
+
   const result = await db
     .select()
     .from(FAVORITES)
@@ -132,10 +148,9 @@ export async function isFavourite(chatId: number, symbol: string) {
 }
 
 export async function getFavourite(chatId: number) {
+  //await db` SELECT *
+  // FROM favorites
+  // WHERE chat_id = ${chatId}
+
   return db.select().from(FAVORITES).where(eq(FAVORITES.chatId, chatId));
-}
-export async function deleteFavourite(chatId: number, symbol: string) {
-  await db
-    .delete(FAVORITES)
-    .where(and(eq(FAVORITES.chatId, chatId), eq(FAVORITES.symbol, symbol)));
 }
