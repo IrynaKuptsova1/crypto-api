@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
-import { CRYPTO_DETAILS } from "./db/schema";
+import { CRYPTO_DETAILS, FAVORITES } from "./db/schema";
 import type { MarketPlatform } from "./validation";
 import {
   getCoinBasePrices,
@@ -97,11 +97,27 @@ export async function updateCryptoPrices() {
     }
   });
   if (rows.length > 0) {
-    //     await irasNewDialectForgoodDatabases`
+    //   await irasNewDialectForgoodDatabases`
     //   INSERT INTO crypto_details
     //   ${irasNewDialectForgoodDatabases(rows, "symbol", "market", "price", "created_time")}
     // `;
 
     await db.insert(CRYPTO_DETAILS).values(rows);
   }
+}
+
+export async function addFavourite(chatId: number, symbol: string) {
+  const exists = await db
+    .select()
+    .from(FAVORITES)
+    .where(and(eq(FAVORITES.chatId, chatId), eq(FAVORITES.symbol, symbol)));
+
+  if (exists.length > 0) {
+    return;
+  }
+
+  await db.insert(FAVORITES).values({
+    chatId,
+    symbol,
+  });
 }

@@ -1,4 +1,3 @@
-
 export type CryptoInfo = {
   [symbol: string]: number;
 };
@@ -41,7 +40,7 @@ export async function getCoinMarketCapPrices(): Promise<CryptoInfo> {
 
   for (const coin of data.data) {
     if (!prices[coin.symbol]) {
-      prices[coin.symbol] = Number(coin.quote.USD.price); 
+      prices[coin.symbol] = Number(coin.quote.USD.price);
     }
   }
 
@@ -55,21 +54,20 @@ export async function getKucoinPrices(): Promise<CryptoInfo> {
     throw new Error("Kucoin API error");
   }
   const data = await response.json();
-  const prices: CryptoInfo = {}; 
+  const prices: CryptoInfo = {};
   for (const [symbol, price] of Object.entries(data.data)) {
     prices[symbol] = Number(price);
   }
   return prices;
 }
 
-
 if (!process.env.TELEGRAM_TOKEN) {
   throw new Error("TELEGRAM_TOKEN is missing");
 }
-
 export async function sendMessage(
   chatId: number,
   text: string,
+  replyMarkup?: object,
 ) {
   const response = await fetch(
     `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`,
@@ -81,17 +79,14 @@ export async function sendMessage(
       body: JSON.stringify({
         chat_id: chatId,
         text,
+        reply_markup: replyMarkup,
       }),
     },
   );
 
-
   if (!response.ok) {
-    throw new Error(
-      `Telegram error: ${await response.text()}`
-    );
+    throw new Error(`Telegram error: ${await response.text()}`);
   }
-
 
   return response.json();
 }
