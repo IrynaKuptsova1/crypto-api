@@ -1,4 +1,5 @@
 import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
 import { CRYPTO_DETAILS } from "./db/schema";
 import type { MarketPlatform } from "./validation";
@@ -8,14 +9,15 @@ import {
   getKucoinPrices,
 } from "./api";
 
-const db = drizzle(process.env.DATABASE_URL!);
+const connection = await mysql.createConnection(process.env.DATABASE_URL!);
+const db = drizzle({ client: connection });
 export async function getCryptoInfo(
   symbol: string,
   startTime: number,
   market?: MarketPlatform,
 ) {
   if (market) {
-    // (sql`
+    // return db`
     //   SELECT *
     //   FROM crypto_details
     //   WHERE symbol = ${symbol}
@@ -99,8 +101,6 @@ export async function updateCryptoPrices() {
     //   INSERT INTO crypto_details
     //   ${irasNewDialectForgoodDatabases(rows, "symbol", "market", "price", "created_time")}
     // `;
-
-  
 
     await db.insert(CRYPTO_DETAILS).values(rows);
   }
