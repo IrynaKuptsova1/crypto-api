@@ -11,7 +11,7 @@ import {
 } from "./validation";
 import { updateCryptoPrices } from "./database";
 import { cors } from "hono/cors";
-import telegram from "./telegram";
+import telegram from "./bot";
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is missing in .env");
 }
