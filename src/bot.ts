@@ -12,8 +12,11 @@ import {
 const bot = new Hono();
 
 bot.post("/webhook", async (c) => {
+  console.log("WEBHOOK RECEIVED");
+
   const update = await c.req.json();
 
+  console.log("UPDATE:", update);
   if (update.callback_query) {
     const callback = update.callback_query;
     const chatId = callback.message.chat.id;
