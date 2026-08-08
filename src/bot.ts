@@ -1,24 +1,25 @@
 import { Hono } from "hono";
-
 import { sendMessage } from "./api";
-
+import { isValidSymbol } from "./validation";
 import {
   addFavourite,
   deleteFavourite,
   getFavourite,
   isFavourite,
   getCryptoInfo,
+  getRecentCrypto,
 } from "./database";
 
-const telegram = new Hono();
+const bot = new Hono();
 
-telegram.post("/webhook", async (c) => {
+bot.post("/webhook", async (c) => {
   const update = await c.req.json();
 
   if (update.callback_query) {
     const callback = update.callback_query;
     const chatId = callback.message.chat.id;
     const data = callback.data;
+    
     if (data.startsWith("add_")) {
       const symbol = data.replace("add_", "");
       await addFavourite(chatId, symbol);
@@ -77,17 +78,14 @@ Commands:
   } else if (text === "/listFavourite") {
     const coins = await getFavourite(chatId);
     const result = coins.map((c) => `/${c.symbol}`).join("\n");
-    await sendMessage(chatId, result || "Empty");
-  }
-
-  else if (/^\/[a-zA-Z0-9]+$/.test(text)) {
+    await sendMessage(chatId, result);
+  } else if (/^\/[a-zA-Z0-9]+$/.test(text)) {
     const symbol = text.substring(1).toUpperCase();
-    const data = await getCryptoInfo(symbol, Date.now() - 86400000);
+    const data = await getCryptoInfo(symbol, Date.now() - 24 * 60 * 60 * 100);
     const favourite = await isFavourite(chatId, symbol);
     await sendMessage(
       chatId,
-      `
-${symbol}
+      `${symbol}
 Last 24 hours:
 ${JSON.stringify(data, null, 2)}
       `,
@@ -107,4 +105,4 @@ ${JSON.stringify(data, null, 2)}
   return c.text("OK");
 });
 
-export default telegram;
+export default bot;

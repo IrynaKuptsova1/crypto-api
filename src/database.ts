@@ -154,3 +154,35 @@ export async function getFavourite(chatId: number) {
 
   return db.select().from(FAVORITES).where(eq(FAVORITES.chatId, chatId));
 }
+export async function getRecentCrypto() {
+  const startTime = Date.now() - 24 * 60 * 60 * 1000;
+  //  SELECT symbol, AVG(price) AS average_price FROM crypto_details
+  // WHERE created_time >= {startTime}
+  // GROUP BY symbol
+  // ORDER BY MAX(created_time) DESC
+  // LIMIT 20;
+
+  const result = await db
+    .select({
+      symbol: CRYPTO_DETAILS.symbol,
+      averagePrice: sql<number>`
+          AVG(${CRYPTO_DETAILS.price})
+        `,
+    })
+    .from(CRYPTO_DETAILS)
+    .where(gte(CRYPTO_DETAILS.createdTime, startTime))
+    .groupBy(CRYPTO_DETAILS.symbol)
+    .orderBy(
+      desc(
+        sql`
+          MAX(${CRYPTO_DETAILS.createdTime})
+        `,
+      ),
+    )
+    .limit(20);
+  return result.map((coin) => ({
+    symbol: coin.symbol,
+    price: Number(coin.averagePrice),
+  }));
+}
+
