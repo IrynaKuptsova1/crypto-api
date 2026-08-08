@@ -11,6 +11,7 @@ import {
 
 const connection = await mysql.createConnection(process.env.DATABASE_URL!);
 const db = drizzle({ client: connection });
+
 export async function getCryptoInfo(
   symbol: string,
   startTime: number,
@@ -24,7 +25,8 @@ export async function getCryptoInfo(
     //   AND market = ${market}
     //   AND created_time >= ${startTime}
     //   ORDER BY created_time DESC
-    // `);
+    // `;
+
     const result = await db
       .select()
       .from(CRYPTO_DETAILS)
@@ -47,10 +49,11 @@ export async function getCryptoInfo(
   //   AND created_time >= ${startTime}
   //   GROUP BY FLOOR(created_time / 300000)
   //   ORDER BY created_time DESC`;
+
   const result = await db
     .select({
-      createdTime: sql<number>`MAX(${CRYPTO_DETAILS.createdTime})`,
-      averagePrice: sql<number>`AVG(${CRYPTO_DETAILS.price})`,
+      createdTime: sql`MAX(${CRYPTO_DETAILS.createdTime})`,
+      averagePrice: sql`AVG(${CRYPTO_DETAILS.price})`,
     })
     .from(CRYPTO_DETAILS)
     .where(
@@ -70,6 +73,7 @@ export async function getCryptoInfo(
 
 export async function updateCryptoPrices() {
   const markets: MarketPlatform[] = ["CoinBase", "CoinMarketCap", "Kucoin"];
+
   const results = await Promise.allSettled([
     getCoinBasePrices(),
     getCoinMarketCapPrices(),
@@ -88,6 +92,7 @@ export async function updateCryptoPrices() {
   results.forEach((result, index) => {
     if (result.status === "fulfilled") {
       const market = markets[index];
+
       for (const [symbol, price] of Object.entries(result.value)) {
         rows.push({
           symbol,
@@ -102,42 +107,61 @@ export async function updateCryptoPrices() {
   if (rows.length === 0) {
     return;
   }
-  //     await db`
+
+  // await db`
   //   INSERT INTO crypto_details
   //   ${db(rows, "symbol", "market", "price", "created_time")}
   // `;
+
   await db.insert(CRYPTO_DETAILS).values(rows);
 }
 
 export async function addFavourite(chatId: number, symbol: string) {
-  // await db` SELECT *
-  // FROM favorites
-  // WHERE chat_id = ${chatId}
-  // AND symbol = ${symbol}
+  // await db`
+  //   SELECT *
+  //   FROM favorites
+  //   WHERE chat_id = ${chatId}
+  //   AND symbol = ${symbol}
+  // `;
 
   const exists = await db
     .select()
     .from(FAVORITES)
     .where(and(eq(FAVORITES.chatId, chatId), eq(FAVORITES.symbol, symbol)));
+
   if (exists.length > 0) {
     return;
   }
-  //await db` INSERT INTO favorites (chat_id,symbol) VALUES ()
-  await db.insert(FAVORITES).values({ chatId, symbol });
+
+  // await db`
+  //   INSERT INTO favorites (chat_id, symbol)
+  //   VALUES (${chatId}, ${symbol})
+  // `;
+
+  await db.insert(FAVORITES).values({
+    chatId,
+    symbol,
+  });
 }
 
 export async function deleteFavourite(chatId: number, symbol: string) {
-  //await db` DELETE FROM favorites
-  //WHERE chat_id = ${chatId} AND symbol = ${symbol};
+  // await db`
+  //   DELETE FROM favorites
+  //   WHERE chat_id = ${chatId}
+  //   AND symbol = ${symbol}
+  // `;
 
   await db
     .delete(FAVORITES)
     .where(and(eq(FAVORITES.chatId, chatId), eq(FAVORITES.symbol, symbol)));
 }
 export async function isFavourite(chatId: number, symbol: string) {
-  //await db` SELECT *
-  // FROM favorites
-  //WHERE chat_id = ${chatId} AND symbol = ${symbol};
+  // await db`
+  //   SELECT *
+  //   FROM favorites
+  //   WHERE chat_id = ${chatId}
+  //   AND symbol = ${symbol}
+  // `;
 
   const result = await db
     .select()
@@ -148,16 +172,21 @@ export async function isFavourite(chatId: number, symbol: string) {
 }
 
 export async function getFavourite(chatId: number) {
-  //await db` SELECT *
-  // FROM favorites
-  // WHERE chat_id = ${chatId}
+  // await db`
+  //   SELECT *
+  //   FROM favorites
+  //   WHERE chat_id = ${chatId}
+  // `;
 
   return db.select().from(FAVORITES).where(eq(FAVORITES.chatId, chatId));
 }
+
 export async function getRecentCrypto() {
   const startTime = Date.now() - 24 * 60 * 60 * 1000;
-  //  SELECT symbol, AVG(price) AS average_price FROM crypto_details
-  // WHERE created_time >= {startTime}
+
+  // SELECT symbol, AVG(price) AS average_price
+  // FROM crypto_details
+  // WHERE created_time >= ${startTime}
   // GROUP BY symbol
   // ORDER BY MAX(created_time) DESC
   // LIMIT 20;
@@ -165,9 +194,7 @@ export async function getRecentCrypto() {
   const result = await db
     .select({
       symbol: CRYPTO_DETAILS.symbol,
-      averagePrice: sql<number>`
-          AVG(${CRYPTO_DETAILS.price})
-        `,
+      averagePrice: sql`AVG(${CRYPTO_DETAILS.price})`,
     })
     .from(CRYPTO_DETAILS)
     .where(gte(CRYPTO_DETAILS.createdTime, startTime))
@@ -185,4 +212,3 @@ export async function getRecentCrypto() {
     price: Number(coin.averagePrice),
   }));
 }
-

@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import * as queries from "./database";
-import { SQL } from "bun";
 import coinbaseSymbols from "../symbols/coinbase_symbols.json";
 import cmcSymbols from "../symbols/cmc_symbols.json";
 import kucoinSymbols from "../symbols/kucoin_symbols.json";
@@ -15,51 +14,6 @@ import telegram from "./bot";
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is missing in .env");
 }
-
-const db = new SQL({
-  url: process.env.DATABASE_URL,
-});
-
-async function initDatabase() {
-  try {
-    await db`SELECT 1`;
-    console.log("Database connected");
-    await db`
-      CREATE TABLE IF NOT EXISTS crypto_details (
-        id INT PRIMARY KEY AUTO_INCREMENT,
-        symbol VARCHAR(20) NOT NULL,
-        market VARCHAR(50) NOT NULL,
-        price DECIMAL(20,8) NOT NULL,
-        created_time BIGINT NOT NULL
-      )
-    `;
-    const indexes = await db`
-      SHOW INDEX FROM crypto_details
-    `;
-
-    const indexExists = indexes.some(
-      (index: any) => index.Key_name === "crypto_index",
-    );
-    if (!indexExists) {
-      await db`
-        CREATE INDEX crypto_index
-        ON crypto_details(symbol, market, created_time)
-      `;
-
-      console.log("Index created");
-    } else {
-      console.log("Index already exists");
-    }
-
-    console.log("Database initialized");
-  } catch (error) {
-    console.error("Database initialization failed");
-    console.error(error);
-    process.exit(1);
-  }
-}
-
-await initDatabase();
 
 Bun.cron("*/5 * * * *", async () => {
   console.log("Updating cryptocurrency prices");
@@ -106,7 +60,7 @@ app.get("/crypto", async (c) => {
       Kucoin: kucoinSymbols,
     };
 
-    if (!marketSymbolsMap[market]?.includes(symbol)) {
+    if (!marketSymbolsMap[market]?.includes(symbol.toUpperCase())) {
       return c.json(
         {
           error: "Symbol not available on this market",
@@ -145,5 +99,4 @@ app.get("/crypto", async (c) => {
   return c.json(data);
 });
 app.route("/telegram", telegram);
-
 export default app;
