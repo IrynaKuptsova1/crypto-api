@@ -5,13 +5,12 @@ import {
   addFavourite,
   deleteFavourite,
   getFavourite,
-  isFavourite,
-  getRecentCrypto,
   getCryptoHistory,
+  getRecentCrypto,
+  isFavourite,
 } from "./db/database";
-
 import type { Env } from "./db/database";
-
+import { isValidPeriod, CryptoPeriod } from "./validation";
 const bot = new Hono<{ Bindings: Env }>();
 
 bot.post("/webhook", async (c) => {
@@ -21,16 +20,62 @@ bot.post("/webhook", async (c) => {
   if (update.callback_query) {
     const callback = update.callback_query;
     const chatId = callback.message.chat.id;
-    const data = callback.data;
+    const data: string = callback.data || "";
     if (data.startsWith("add_")) {
       const symbol = data.replace("add_", "");
       await addFavourite(c.env, chatId, symbol);
       await sendMessage(chatId, `${symbol} added to favourites`);
+      return c.text("OK");
     }
     if (data.startsWith("delete_")) {
       const symbol = data.replace("delete_", "");
       await deleteFavourite(c.env, chatId, symbol);
       await sendMessage(chatId, `${symbol} removed from favourites`);
+      return c.text("OK");
+    }
+    if (data.startsWith("period_")) {
+      const parts = data.split("_");
+      const symbol = parts[1];
+      const period = parts[2];
+      if (!symbol || !period) {
+        return c.text("OK");
+      }
+      if (!isValidPeriod(period)) {
+        await sendMessage(chatId, "Invalid period.");
+        return c.text("OK");
+      }
+      const history = await getCryptoHistory(c.env, symbol, period);
+      if (history.length === 0) {
+        await sendMessage(
+          chatId,
+          `No data found for ${symbol} for the last ${period}.`,
+        );
+        return c.text("OK");
+      }
+      const historyText = history
+        .map(
+          (item) =>
+            `${new Date(item.createdTime).toISOString()} — $${item.averagePrice.toFixed(2)}`,
+        )
+        .join("\n");
+      const favourite = await isFavourite(c.env, chatId, symbol);
+      await sendMessage(
+        chatId,
+        `${symbol}
+Average price history for the last ${period}:
+${historyText}`,
+        {
+          inline_keyboard: [
+            [
+              {
+                text: favourite ? "Remove from following" : "Add to following",
+                callback_data: favourite ? `delete_${symbol}` : `add_${symbol}`,
+              },
+            ],
+          ],
+        },
+      );
+      return c.text("OK");
     }
     return c.text("OK");
   }
@@ -46,9 +91,7 @@ bot.post("/webhook", async (c) => {
       `Welcome to Crypto Bot.
 Use /help to see available commands.`,
     );
-  }
-
-  else if (text === "/help") {
+  } else if (text === "/help") {
     await sendMessage(
       chatId,
       `Commands:
@@ -63,9 +106,7 @@ You can also request a cryptocurrency:
 /ETH
 /SOL`,
     );
-  }
-
-  else if (text.startsWith("/addToFavourite")) {
+  } else if (text.startsWith("/addToFavourite")) {
     const symbol = text.split(" ")[1]?.toUpperCase();
     if (!symbol) {
       await sendMessage(chatId, "Symbol required");
@@ -73,8 +114,7 @@ You can also request a cryptocurrency:
     }
     await addFavourite(c.env, chatId, symbol);
     await sendMessage(chatId, `${symbol} added to favourites`);
-  }
-  else if (text.startsWith("/deleteFavourite")) {
+  } else if (text.startsWith("/deleteFavourite")) {
     const symbol = text.split(" ")[1]?.toUpperCase();
     if (!symbol) {
       await sendMessage(chatId, "Symbol required");
@@ -82,8 +122,7 @@ You can also request a cryptocurrency:
     }
     await deleteFavourite(c.env, chatId, symbol);
     await sendMessage(chatId, `${symbol} removed from favourites`);
-  }
-  else if (text === "/listFavourite") {
+  } else if (text === "/listFavourite") {
     const coins = await getFavourite(c.env, chatId);
     if (coins.length === 0) {
       await sendMessage(chatId, "Your favourites list is empty.");
@@ -91,37 +130,52 @@ You can also request a cryptocurrency:
     }
     const result = coins.map((coin) => `/${coin.symbol}`).join("\n");
     await sendMessage(chatId, result);
-  }
-  else if (text === "/listRecent") {
+  } else if (text === "/listRecent") {
     const coins = await getRecentCrypto(c.env);
+    if (coins.length === 0) {
+      await sendMessage(chatId, "No cryptocurrency data available.");
+      return c.text("OK");
+    }
     const result = coins
       .map((coin) => `/${coin.symbol} $${coin.price.toFixed(2)}`)
       .join("\n");
     await sendMessage(chatId, result);
-  }
-  else if (/^\/[a-zA-Z0-9]+$/.test(text)) {
+  } else if (/^\/[a-zA-Z0-9]+$/.test(text)) {
     const symbol = text.substring(1).toUpperCase();
-    const startTime = Date.now() - 24 * 60 * 60 * 1000;
-    const data = await getCryptoHistory(c.env, symbol, startTime);
-    const favourite = await isFavourite(c.env, chatId, symbol);
-    const history = data
-      .map(
-        (item) =>
-          `${new Date(item.createdTime).toISOString()} — $${item.averagePrice.toFixed(2)}`,
-      )
-      .join("\n");
-
     await sendMessage(
       chatId,
       `${symbol}
-Average price history for the last 24 hours:
-${history}`,
+Choose period:`,
       {
         inline_keyboard: [
           [
             {
-              text: favourite ? "Remove from following" : "Add to following",
-              callback_data: favourite ? `delete_${symbol}` : `add_${symbol}`,
+              text: "30m",
+              callback_data: `period_${symbol}_30m`,
+            },
+            {
+              text: "1h",
+              callback_data: `period_${symbol}_1h`,
+            },
+          ],
+          [
+            {
+              text: "3h",
+              callback_data: `period_${symbol}_3h`,
+            },
+            {
+              text: "6h",
+              callback_data: `period_${symbol}_6h`,
+            },
+          ],
+          [
+            {
+              text: "12h",
+              callback_data: `period_${symbol}_12h`,
+            },
+            {
+              text: "24h",
+              callback_data: `period_${symbol}_24h`,
             },
           ],
         ],

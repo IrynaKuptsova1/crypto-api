@@ -3,7 +3,11 @@ import { eq, and, gte, desc, sql } from "drizzle-orm";
 import type { D1Database } from "@cloudflare/workers-types";
 
 import { CRYPTO_DETAILS, FAVORITES } from "./schema";
-import type { MarketPlatform } from "../validation";
+import {
+  MarketPlatform,
+  CryptoPeriod,
+  getPeriodMilliseconds,
+} from "../validation";
 
 import {
   getCoinBasePrices,
@@ -106,13 +110,13 @@ export async function getCryptoInfo(
   }));
 }
 
-
 export async function getCryptoHistory(
   env: Env,
   symbol: string,
-  startTime: number,
+  period: CryptoPeriod,
 ): Promise<CryptoAverage[]> {
   const db = getDb(env);
+  const startTime = Date.now() - getPeriodMilliseconds(period);
 
   // SELECT MAX(created_time) AS created_time,
   //        AVG(price) AS average_price
@@ -156,7 +160,6 @@ export async function getCryptoHistory(
     averagePrice: Number(item.averagePrice),
   }));
 }
-
 export async function updateCryptoPrices(env: Env) {
   const db = getDb(env);
 
