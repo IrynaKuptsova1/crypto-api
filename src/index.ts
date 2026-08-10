@@ -1,32 +1,26 @@
 import { Hono } from "hono";
-import * as queries from "./database";
+import { cors } from "hono/cors";
+
 import coinbaseSymbols from "../symbols/coinbase_symbols.json";
 import cmcSymbols from "../symbols/cmc_symbols.json";
 import kucoinSymbols from "../symbols/kucoin_symbols.json";
+import { updateCryptoPrices, getCryptoInfo } from "./db/database";
 import {
   isValidMarket,
   isValidSymbol,
   type MarketPlatform,
 } from "./validation";
-import { updateCryptoPrices } from "./database";
-import { cors } from "hono/cors";
+
 import telegram from "./bot";
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL is missing in .env");
-}
+import type { D1Database, ScheduledController,
+  ExecutionContext, } from "@cloudflare/workers-types";
 
-Bun.cron("*/5 * * * *", async () => {
-  console.log("Updating cryptocurrency prices");
 
-  try {
-    await updateCryptoPrices();
-    console.log("Update completed");
-  } catch (error) {
-    console.error("Update failed:", error);
-  }
-});
+type Bindings = {
+  crypto_db: D1Database;
+};
 
-const app = new Hono();
+const app = new Hono<{ Bindings: Bindings }>();
 
 app.use("*", cors());
 
@@ -90,13 +84,33 @@ app.get("/crypto", async (c) => {
     );
   }
 
-  const data = await queries.getCryptoInfo(
+  const data = await getCryptoInfo(
+    c.env,
     symbol,
     startTimeNumber,
-    market as MarketPlatform,
+    market as MarketPlatform | undefined,
   );
 
   return c.json(data);
 });
+
 app.route("/telegram", telegram);
-export default app;
+
+export default {
+  fetch: app.fetch,
+
+  async scheduled(
+    _controller: ScheduledController,
+    env: Bindings,
+    _ctx: ExecutionContext,
+  ) {
+    console.log("Updating cryptocurrency prices");
+
+    try {
+      await updateCryptoPrices(env);
+      console.log("Update completed");
+    } catch (error) {
+      console.error("Update failed:", error);
+    }
+  },
+};
