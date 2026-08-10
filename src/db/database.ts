@@ -203,7 +203,7 @@ export async function updateCryptoPrices(env: Env) {
 
   // INSERT INTO crypto_details
   // (symbol, market, price, created_time)
-  // VALUES (...);
+  // VALUES (???);
 
   await db.insert(CRYPTO_DETAILS).values(rows);
 }
