@@ -61,7 +61,7 @@ export async function getKucoinPrices(): Promise<CryptoInfo> {
   return prices;
 }
 
-if (!process.env.BOT_TOKEN) {
+if (!process.env.TELEGRAM_TOKEN) {
   throw new Error("TELEGRAM_TOKEN is missing");
 }
 export async function sendMessage(
@@ -70,7 +70,7 @@ export async function sendMessage(
   replyMarkup?: object,
 ) {
   const response = await fetch(
-    `https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`,
+    `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`,
     {
       method: "POST",
       headers: {
