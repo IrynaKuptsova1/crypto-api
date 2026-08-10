@@ -17,6 +17,8 @@ import {
 
 export type Env = {
   crypto_db: D1Database;
+  TELEGRAM_TOKEN: string;
+  CMC_API_KEY: string;
 };
 
 export type CryptoAverage = {
@@ -167,7 +169,7 @@ export async function updateCryptoPrices(env: Env) {
 
   const results = await Promise.allSettled([
     getCoinBasePrices(),
-    getCoinMarketCapPrices(),
+    getCoinMarketCapPrices(env),
     getKucoinPrices(),
   ]);
 

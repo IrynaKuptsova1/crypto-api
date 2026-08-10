@@ -5,6 +5,7 @@ import coinbaseSymbols from "../symbols/coinbase_symbols.json";
 import cmcSymbols from "../symbols/cmc_symbols.json";
 import kucoinSymbols from "../symbols/kucoin_symbols.json";
 import { updateCryptoPrices, getCryptoInfo } from "./db/database";
+import type { Env } from "./db/database";
 import {
   isValidMarket,
   isValidSymbol,
@@ -12,15 +13,13 @@ import {
 } from "./validation";
 
 import telegram from "./bot";
-import type { D1Database, ScheduledController,
-  ExecutionContext, } from "@cloudflare/workers-types";
+import type {
+  D1Database,
+  ScheduledController,
+  ExecutionContext,
+} from "@cloudflare/workers-types";
 
-
-type Bindings = {
-  crypto_db: D1Database;
-};
-
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{ Bindings: Env }>();
 
 app.use("*", cors());
 
@@ -94,14 +93,14 @@ app.get("/crypto", async (c) => {
   return c.json(data);
 });
 
-app.route("/telegram", telegram);
+app.route("/", telegram);
 
 export default {
   fetch: app.fetch,
 
   async scheduled(
     _controller: ScheduledController,
-    env: Bindings,
+    env: Env,
     _ctx: ExecutionContext,
   ) {
     console.log("Updating cryptocurrency prices");

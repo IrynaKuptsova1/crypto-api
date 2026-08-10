@@ -1,9 +1,12 @@
+import type { Env } from "./db/database";
 export type CryptoInfo = {
   [symbol: string]: number;
 };
 
 export async function getCoinBasePrices(): Promise<CryptoInfo> {
-  const response = await fetch("https://api.coinbase.com/v2/exchange-rates");
+  const response = await fetch(
+    "https://api.coinbase.com/v2/exchange-rates?currency=USD",
+  );
 
   if (!response.ok) {
     throw new Error("CoinBase API error");
@@ -20,12 +23,16 @@ export async function getCoinBasePrices(): Promise<CryptoInfo> {
   return prices;
 }
 
-export async function getCoinMarketCapPrices(): Promise<CryptoInfo> {
+export async function getCoinMarketCapPrices(env: Env): Promise<CryptoInfo> {
+  if (!env.CMC_API_KEY) {
+    throw new Error("CMC_API_KEY is missing");
+  }
+
   const response = await fetch(
     "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest?limit=5000",
     {
       headers: {
-        "X-CMC_PRO_API_KEY": process.env.CMC_API_KEY!,
+        "X-CMC_PRO_API_KEY": env.CMC_API_KEY,
       },
     },
   );
@@ -34,13 +41,15 @@ export async function getCoinMarketCapPrices(): Promise<CryptoInfo> {
     console.log(await response.text());
     throw new Error("CoinMarketCap API error");
   }
-
   const data = await response.json();
   const prices: CryptoInfo = {};
-
   for (const coin of data.data) {
+    const price = Number(coin.quote.USD.price);
+    if (!Number.isFinite(price) || price <= 0) {
+      continue;
+    }
     if (!prices[coin.symbol]) {
-      prices[coin.symbol] = Number(coin.quote.USD.price);
+      prices[coin.symbol] = price;
     }
   }
 
@@ -56,21 +65,27 @@ export async function getKucoinPrices(): Promise<CryptoInfo> {
   const data = await response.json();
   const prices: CryptoInfo = {};
   for (const [symbol, price] of Object.entries(data.data)) {
-    prices[symbol] = Number(price);
+    const value = Number(price);
+
+    if (!Number.isFinite(value) || value <= 0) {
+      continue;
+    }
+    prices[symbol] = value;
   }
   return prices;
 }
 
-if (!process.env.TELEGRAM_TOKEN) {
-  throw new Error("TELEGRAM_TOKEN is missing");
-}
 export async function sendMessage(
+  env: Env,
   chatId: number,
   text: string,
   replyMarkup?: object,
 ) {
+  if (!env.TELEGRAM_TOKEN) {
+    throw new Error("TELEGRAM_TOKEN is missing");
+  }
   const response = await fetch(
-    `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`,
+    `https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/sendMessage`,
     {
       method: "POST",
       headers: {
