@@ -165,21 +165,16 @@ export async function getCryptoHistory(
 export async function updateCryptoPrices(env: Env) {
   const db = getDb(env);
 
+  const markets: MarketPlatform[] = [
+    "CoinBase",
+    "CoinMarketCap",
+    "Kucoin",
+  ];
+
   const results = await Promise.allSettled([
-    getCoinBasePrices().then((prices) => ({
-      market: "CoinBase" as const,
-      prices,
-    })),
-
-    getCoinMarketCapPrices(env).then((prices) => ({
-      market: "CoinMarketCap" as const,
-      prices,
-    })),
-
-    getKucoinPrices().then((prices) => ({
-      market: "Kucoin" as const,
-      prices,
-    })),
+    getCoinBasePrices(),
+    getCoinMarketCapPrices(env),
+    getKucoinPrices(),
   ]);
 
   const rows: Array<{
@@ -191,15 +186,15 @@ export async function updateCryptoPrices(env: Env) {
 
   const createdTime = Date.now();
 
-  for (const result of results) {
-    if (result.status !== "fulfilled") {
-      console.error("Market update failed:", result.reason);
-      continue;
+  results.forEach((result, index) => {
+    const market = markets[index];
+
+    if (result.status === "rejected") {
+      console.error(`${market} update failed:`, result.reason);
+      return;
     }
 
-    const { market, prices } = result.value;
-
-    for (const [symbol, price] of Object.entries(prices)) {
+    for (const [symbol, price] of Object.entries(result.value)) {
       rows.push({
         symbol,
         market,
@@ -207,16 +202,16 @@ export async function updateCryptoPrices(env: Env) {
         createdTime,
       });
     }
-  }
+  });
 
   if (rows.length === 0) {
-    console.log("No cryptocurrency data to save");
+    console.log("No cryptocurrency prices to save");
     return;
   }
 
   console.log(`Saving ${rows.length} cryptocurrency prices`);
 
-  const BATCH_SIZE = 100;
+  const BATCH_SIZE = 20;
 
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE);
