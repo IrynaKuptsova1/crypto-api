@@ -165,12 +165,21 @@ export async function getCryptoHistory(
 export async function updateCryptoPrices(env: Env) {
   const db = getDb(env);
 
-  const markets: MarketPlatform[] = ["CoinBase", "CoinMarketCap", "Kucoin"];
-
   const results = await Promise.allSettled([
-    getCoinBasePrices(),
-    getCoinMarketCapPrices(env),
-    getKucoinPrices(),
+    getCoinBasePrices().then((prices) => ({
+      market: "CoinBase" as const,
+      prices,
+    })),
+
+    getCoinMarketCapPrices(env).then((prices) => ({
+      market: "CoinMarketCap" as const,
+      prices,
+    })),
+
+    getKucoinPrices().then((prices) => ({
+      market: "Kucoin" as const,
+      prices,
+    })),
   ]);
 
   const rows: Array<{
@@ -182,14 +191,15 @@ export async function updateCryptoPrices(env: Env) {
 
   const createdTime = Date.now();
 
-  results.forEach((result, index) => {
+  for (const result of results) {
     if (result.status !== "fulfilled") {
-      return;
+      console.error("Market update failed:", result.reason);
+      continue;
     }
 
-    const market = markets[index];
+    const { market, prices } = result.value;
 
-    for (const [symbol, price] of Object.entries(result.value)) {
+    for (const [symbol, price] of Object.entries(prices)) {
       rows.push({
         symbol,
         market,
@@ -197,17 +207,28 @@ export async function updateCryptoPrices(env: Env) {
         createdTime,
       });
     }
-  });
+  }
 
   if (rows.length === 0) {
+    console.log("No cryptocurrency data to save");
     return;
   }
 
-  // INSERT INTO crypto_details
-  // (symbol, market, price, created_time)
-  // VALUES (???);
+  console.log(`Saving ${rows.length} cryptocurrency prices`);
 
-  await db.insert(CRYPTO_DETAILS).values(rows);
+  const BATCH_SIZE = 100;
+
+  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+    const batch = rows.slice(i, i + BATCH_SIZE);
+
+    await db.insert(CRYPTO_DETAILS).values(batch);
+
+    console.log(
+      `Saved batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.length} rows`,
+    );
+  }
+
+  console.log(`Successfully saved ${rows.length} cryptocurrency prices`);
 }
 
 export async function addFavourite(env: Env, chatId: number, symbol: string) {
