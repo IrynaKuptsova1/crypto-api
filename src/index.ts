@@ -93,7 +93,7 @@ app.get("/crypto", async (c) => {
   return c.json(data);
 });
 
-app.route("/", telegram);
+app.route("/telegram", telegram);
 
 export default {
   fetch: app.fetch,
