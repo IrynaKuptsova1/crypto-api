@@ -1,9 +1,5 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-
-import coinbaseSymbols from "../symbols/coinbase_symbols.json";
-import cmcSymbols from "../symbols/cmc_symbols.json";
-import kucoinSymbols from "../symbols/kucoin_symbols.json";
 import { updateCryptoPrices, getCryptoInfo } from "./db/database";
 import type { Env } from "./db/database";
 import {
@@ -11,10 +7,11 @@ import {
   isValidSymbol,
   type MarketPlatform,
 } from "./validation";
-
+import coinbaseSymbols from "../symbols/coinbase_symbols.json";
+import cmcSymbols from "../symbols/cmc_symbols.json";
+import kucoinSymbols from "../symbols/kucoin_symbols.json";
 import telegram from "./bot";
 import type {
-  D1Database,
   ScheduledController,
   ExecutionContext,
 } from "@cloudflare/workers-types";
@@ -24,73 +21,90 @@ const app = new Hono<{ Bindings: Env }>();
 app.use("*", cors());
 
 app.get("/crypto", async (c) => {
-  const symbol = c.req.query("symbol");
-  const market = c.req.query("market");
-  const startTime = c.req.query("startTime");
+  try {
+    const symbol = c.req.query("symbol");
+    const market = c.req.query("market");
+    const startTime = c.req.query("startTime");
 
-  if (!symbol || !isValidSymbol(symbol)) {
-    return c.json(
-      {
-        error: "Unknown cryptocurrency",
-      },
-      400,
-    );
-  }
-
-  if (market) {
-    if (!isValidMarket(market)) {
+    if (!symbol || !isValidSymbol(symbol)) {
       return c.json(
         {
-          error: "Unknown market",
+          error: "Unknown cryptocurrency",
         },
         400,
       );
     }
 
-    const marketSymbolsMap: Record<string, string[]> = {
-      CoinBase: coinbaseSymbols,
-      CoinMarketCap: cmcSymbols,
-      Kucoin: kucoinSymbols,
-    };
-
-    if (!marketSymbolsMap[market]?.includes(symbol.toUpperCase())) {
+    if (!startTime) {
       return c.json(
         {
-          error: "Symbol not available on this market",
+          error: "startTime is required",
         },
         400,
       );
     }
-  }
 
-  if (!startTime) {
+    const startTimeNumber = Number(startTime);
+
+    if (!Number.isFinite(startTimeNumber) || startTimeNumber <= 0) {
+      return c.json(
+        {
+          error: "startTime must be milliseconds",
+        },
+        400,
+      );
+    }
+
+    let validMarket: MarketPlatform | undefined;
+
+    if (market) {
+      if (!isValidMarket(market)) {
+        return c.json(
+          {
+            error: "Unknown market",
+          },
+          400,
+        );
+      }
+
+      validMarket = market;
+
+      const marketSymbolsMap: Record<string, string[]> = {
+        CoinBase: coinbaseSymbols,
+        CoinMarketCap: cmcSymbols,
+        Kucoin: kucoinSymbols,
+      };
+
+      const symbols = marketSymbolsMap[market];
+
+      if (!symbols?.includes(symbol.toUpperCase())) {
+        return c.json(
+          {
+            error: "Symbol not available on this market",
+          },
+          400,
+        );
+      }
+    }
+
+    const data = await getCryptoInfo(
+      c.env,
+      symbol.toUpperCase(),
+      startTimeNumber,
+      validMarket,
+    );
+
+    return c.json(data);
+  } catch (error) {
+    console.error("GET /crypto failed:", error);
+
     return c.json(
       {
-        error: "startTime is required",
+        error: "Internal server error",
       },
-      400,
+      500,
     );
   }
-
-  const startTimeNumber = Number(startTime);
-
-  if (Number.isNaN(startTimeNumber)) {
-    return c.json(
-      {
-        error: "startTime must be milliseconds",
-      },
-      400,
-    );
-  }
-
-  const data = await getCryptoInfo(
-    c.env,
-    symbol,
-    startTimeNumber,
-    market as MarketPlatform | undefined,
-  );
-
-  return c.json(data);
 });
 
 app.route("/telegram", telegram);
