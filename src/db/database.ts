@@ -33,6 +33,18 @@ export type CryptoMarket = {
   price: number;
   createdTime: number;
 };
+export type CryptoResponse =
+  | {
+      id: number;
+      symbol: string;
+      market: string;
+      price: number;
+      created_time: number;
+    }
+  | {
+      created_time: number;
+      average_price: number;
+    };
 
 export function getDb(env: Env) {
   return drizzle(env.crypto_db);
@@ -43,25 +55,23 @@ export async function getCryptoInfo(
   symbol: string,
   startTime: number,
   market?: MarketPlatform,
-): Promise<CryptoAverage[] | CryptoMarket[]> {
+): Promise<CryptoResponse[]> {
   const db = getDb(env);
 
   if (market) {
-    /*
-      SELECT *
-      FROM crypto_details
-      WHERE symbol = ${symbol}
-        AND market = ${market}
-        AND created_time >= ${startTime}
-      ORDER BY created_time DESC;
-    */
+    // SELECT *
+    // FROM crypto_details
+    // WHERE symbol = ${symbol}
+    // AND market = ${market}
+    // AND created_time >= ${startTime}
+    // ORDER BY created_time DESC;
 
     const result = await db
       .select()
       .from(CRYPTO_DETAILS)
       .where(
         and(
-          eq(CRYPTO_DETAILS.symbol, symbol.toUpperCase()),
+          eq(CRYPTO_DETAILS.symbol, symbol),
           eq(CRYPTO_DETAILS.market, market),
           gte(CRYPTO_DETAILS.createdTime, startTime),
         ),
@@ -69,56 +79,39 @@ export async function getCryptoInfo(
       .orderBy(desc(CRYPTO_DETAILS.createdTime));
 
     return result.map((item) => ({
-      id: Number(item.id),
+      id: item.id,
       symbol: item.symbol,
       market: item.market,
       price: Number(item.price),
-      createdTime: Number(item.createdTime),
+      created_time: Number(item.createdTime),
     }));
   }
 
-  /*
-    SELECT
-      MAX(created_time) AS created_time,
-      AVG(price) AS average_price
-    FROM crypto_details
-    WHERE symbol = ${symbol}
-      AND created_time >= ${startTime}
-    GROUP BY CAST(created_time / 300000 AS INTEGER)
-    ORDER BY created_time DESC;
-  */
+  // SELECT MAX(created_time) AS created_time,
+  //        AVG(price) AS average_price
+  // FROM crypto_details
+  // WHERE symbol = ${symbol}
+  // AND created_time >= ${startTime}
+  // GROUP BY FLOOR(created_time / 300000)
+  // ORDER BY created_time DESC;
 
   const result = await db
     .select({
-      createdTime: sql<number>`
-        MAX(${CRYPTO_DETAILS.createdTime})
-      `,
-      averagePrice: sql<number>`
-        AVG(${CRYPTO_DETAILS.price})
-      `,
+      createdTime: sql`MAX(${CRYPTO_DETAILS.createdTime})`,
+      averagePrice: sql`AVG(${CRYPTO_DETAILS.price})`,
     })
     .from(CRYPTO_DETAILS)
     .where(
       and(
-        eq(CRYPTO_DETAILS.symbol, symbol.toUpperCase()),
+        eq(CRYPTO_DETAILS.symbol, symbol),
         gte(CRYPTO_DETAILS.createdTime, startTime),
       ),
     )
-    .groupBy(
-      sql`
-        CAST(${CRYPTO_DETAILS.createdTime} / 300000 AS INTEGER)
-      `,
-    )
-    .orderBy(
-      desc(
-        sql`
-          MAX(${CRYPTO_DETAILS.createdTime})
-        `,
-      ),
-    );
+    .groupBy(sql`CAST(${CRYPTO_DETAILS.createdTime} / 300000 AS INTEGER)`)
+    .orderBy(desc(sql`MAX(${CRYPTO_DETAILS.createdTime})`));
 
   return result.map((item) => ({
-    createdTime: Number(item.createdTime),
+    created_time: Number(item.createdTime),
     average_price: Number(item.averagePrice),
   }));
 }
@@ -181,11 +174,12 @@ export async function getCryptoHistory(
 export async function updateCryptoPrices(env: Env) {
   const db = getDb(env);
 
-  const markets: MarketPlatform[] = ["CoinBase", "Kucoin"];
+  const markets: MarketPlatform[] = ["CoinBase", "Kucoin", "CoinMarketCap"];
 
   const results = await Promise.allSettled([
     getCoinBasePrices(),
     getKucoinPrices(),
+    // getCoinMarketCapPrice(env)
   ]);
 
   const rows: Array<{
