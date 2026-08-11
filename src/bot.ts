@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { sendMessage } from "./api";
 
 import {
   addFavourite,
@@ -9,354 +8,585 @@ import {
   getRecentCrypto,
   isFavourite,
 } from "./db/database";
+
 import type { Env } from "./db/database";
-import { isValidPeriod, isValidSymbol, type CryptoPeriod } from "./validation";
+import { isValidSymbol, type CryptoPeriod } from "./validation";
+
+import { sendMessage } from "./api";
+
 const bot = new Hono<{ Bindings: Env }>();
 
-bot.post("/webhook", async (c) => {
-  console.log("WEBHOOK RECEIVED");
-  const update = await c.req.json();
-  console.log("UPDATE:", update);
-  if (update.callback_query) {
-    const callback = update.callback_query;
-    const chatId = callback.message?.chat?.id;
-    const data: string = callback.data || "";
+type TelegramUser = {
+  id: number;
+  first_name?: string;
+  username?: string;
+};
 
-    if (!chatId) {
-      return c.text("OK");
-    }
-    if (data.startsWith("add_")) {
-      const symbol = data.replace("add_", "").toUpperCase();
+type TelegramChat = {
+  id: number;
+};
 
-      if (!isValidSymbol(symbol)) {
-        await sendMessage(c.env, chatId, `Unknown cryptocurrency: ${symbol}`);
+type TelegramMessage = {
+  message_id: number;
+  chat: TelegramChat;
+  from?: TelegramUser;
+  text?: string;
+};
 
-        return c.text("OK");
-      }
+type TelegramCallbackQuery = {
+  id: string;
+  from: TelegramUser;
+  data?: string;
+  message?: TelegramMessage;
+};
 
-      await addFavourite(c.env, chatId, symbol);
+type TelegramUpdate = {
+  update_id: number;
+  message?: TelegramMessage;
+  callback_query?: TelegramCallbackQuery;
+};
 
-      await sendMessage(c.env, chatId, `${symbol} added to favourites`);
+const PERIODS: Array<{
+  label: string;
+  value: CryptoPeriod;
+}> = [
+  { label: "30 min", value: "30m" },
+  { label: "1 hour", value: "1h" },
+  { label: "3 hours", value: "3h" },
+  { label: "6 hours", value: "6h" },
+  { label: "12 hours", value: "12h" },
+  { label: "24 hours", value: "24h" },
+];
 
-      return c.text("OK");
-    }
+function periodKeyboard(symbol: string) {
+  return {
+    inline_keyboard: [
+      PERIODS.slice(0, 3).map((period) => ({
+        text: period.label,
+        callback_data: `period_${symbol}_${period.value}`,
+      })),
+      PERIODS.slice(3).map((period) => ({
+        text: period.label,
+        callback_data: `period_${symbol}_${period.value}`,
+      })),
+    ],
+  };
+}
 
-    /*
-     * Remove from favourites
-     *
-     * callback_data:
-     * delete_BTC
-     */
-    if (data.startsWith("delete_")) {
-      const symbol = data.replace("delete_", "").toUpperCase();
+function favouriteKeyboard(symbol: string, favourite: boolean) {
+  if (favourite) {
+    return {
+      inline_keyboard: [
+        [
+          {
+            text: "Delete from favourites",
+            callback_data: `delete_${symbol}`,
+          },
+        ],
+        [
+          {
+            text: "Price history",
+            callback_data: `history_${symbol}`,
+          },
+        ],
+      ],
+    };
+  }
 
-      await deleteFavourite(c.env, chatId, symbol);
-
-      await sendMessage(c.env, chatId, `${symbol} removed from favourites`);
-
-      return c.text("OK");
-    }
-
-    /*
-     * Select history period
-     *
-     * callback_data:
-     * period_BTC_30m
-     * period_BTC_1h
-     * period_BTC_3h
-     * period_BTC_6h
-     * period_BTC_12h
-     * period_BTC_24h
-     */
-    if (data.startsWith("period_")) {
-      const parts = data.split("_");
-
-      const symbol = parts[1]?.toUpperCase();
-      const period = parts[2] as CryptoPeriod | undefined;
-
-      if (!symbol || !period) {
-        return c.text("OK");
-      }
-
-      if (!isValidSymbol(symbol)) {
-        await sendMessage(c.env, chatId, `Unknown cryptocurrency: ${symbol}`);
-
-        return c.text("OK");
-      }
-
-      if (!isValidPeriod(period)) {
-        await sendMessage(c.env, chatId, "Invalid period.");
-
-        return c.text("OK");
-      }
-
-      const history = await getCryptoHistory(c.env, symbol, period);
-
-      if (history.length === 0) {
-        await sendMessage(
-          c.env,
-          chatId,
-          `No data found for ${symbol} for the last ${period}.`,
-        );
-
-        return c.text("OK");
-      }
-
-      const historyText = history
-        .map(
-          (item) =>
-            `${new Date(item.createdTime).toISOString()} — $${item.averagePrice.toFixed(2)}`,
-        )
-        .join("\n");
-
-      const favourite = await isFavourite(c.env, chatId, symbol);
-
-      await sendMessage(
-        c.env,
-        chatId,
-        `${symbol}
-
-Average price history for the last ${period}:
-
-${historyText}`,
+  return {
+    inline_keyboard: [
+      [
         {
-          inline_keyboard: [
-            [
-              {
-                text: favourite ? "Remove from following" : "Add to following",
-                callback_data: favourite ? `delete_${symbol}` : `add_${symbol}`,
-              },
-            ],
-          ],
+          text: "Add to favourites",
+          callback_data: `add_${symbol}`,
         },
-      );
+      ],
+      [
+        {
+          text: "Price history",
+          callback_data: `history_${symbol}`,
+        },
+      ],
+    ],
+  };
+}
 
-      return c.text("OK");
-    }
+function formatPrice(price: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 8,
+  }).format(price);
+}
 
-    return c.text("OK");
+function formatDate(timestamp: number) {
+  return new Date(timestamp).toLocaleString("en-US");
+}
+
+async function answerCallbackQuery(
+  env: Env,
+  callbackQueryId: string,
+  text?: string,
+) {
+  const url = `https://api.telegram.org/bot${env.TELEGRAM_TOKEN}/answerCallbackQuery`;
+
+  const body: {
+    callback_query_id: string;
+    text?: string;
+  } = {
+    callback_query_id: callbackQueryId,
+  };
+
+  if (text) {
+    body.text = text;
   }
 
-  /*
-   * =========================
-   * MESSAGE
-   * =========================
-   */
+  await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+}
 
-  const message = update.message;
+async function handleStart(env: Env, chatId: number) {
+  await sendMessage(
+    env,
+    chatId,
+    `Welcome to Crypto Bot!
 
-  if (!message) {
-    return c.text("OK");
-  }
+Available commands:
 
-  const chatId = message.chat?.id;
-  const text: string = message.text || "";
+/start - start the bot
+/help - show available commands
+/listRecent - show recently updated cryptocurrencies
+/addToFavourite BTC - add BTC to favourites
+/listFavourite - show your favourites
+/deleteFavourite BTC - remove BTC from favourites
 
-  if (!chatId) {
-    return c.text("OK");
-  }
+You can also send a cryptocurrency symbol directly, for example:
 
-  /*
-   * =========================
-   * /start
-   * =========================
-   */
+BTC
+ETH
+SOL`,
+  );
+}
 
-  if (text === "/start") {
-    await sendMessage(
-      c.env,
-      chatId,
-      `Welcome to Crypto Bot.
+async function handleHelp(env: Env, chatId: number) {
+  await sendMessage(
+    env,
+    chatId,
+    `Crypto Bot commands:
 
-Use /help to see available commands.`,
-    );
-  } else if (text === "/help") {
+/start
+Start the bot.
 
-  /*
-   * =========================
-   * /help
-   * =========================
-   */
-    await sendMessage(
-      c.env,
-      chatId,
-      `Commands:
+/help
+Show this help message.
 
 /listRecent
-/listFavourite
+Show recently updated cryptocurrencies.
+
 /addToFavourite BTC
+Add BTC to your favourites.
+
+/listFavourite
+Show your favourite cryptocurrencies.
+
 /deleteFavourite BTC
+Remove BTC from your favourites.
 
-You can also request a cryptocurrency:
+You can also send a symbol directly:
 
-/BTC
-/ETH
-/SOL`,
-    );
-  } else if (text.startsWith("/addToFavourite")) {
+BTC
+ETH
+SOL
 
-  /*
-   * =========================
-   * /addToFavourite BTC
-   * =========================
-   */
-    const symbol = text.split(/\s+/)[1]?.toUpperCase();
+After selecting a cryptocurrency, you can view its price history for:
+30m, 1h, 3h, 6h, 12h or 24h.`,
+  );
+}
 
-    if (!symbol) {
-      await sendMessage(
-        c.env,
-        chatId,
-        "Symbol required.\n\nExample: /addToFavourite BTC",
-      );
+async function handleListRecent(env: Env, chatId: number) {
+  const cryptocurrencies = await getRecentCrypto(env);
 
-      return c.text("OK");
-    }
-
-    if (!isValidSymbol(symbol)) {
-      await sendMessage(c.env, chatId, `Unknown cryptocurrency: ${symbol}`);
-
-      return c.text("OK");
-    }
-
-    await addFavourite(c.env, chatId, symbol);
-
-    await sendMessage(c.env, chatId, `${symbol} added to favourites`);
-  } else if (text.startsWith("/deleteFavourite")) {
-
-  /*
-   * =========================
-   * /deleteFavourite BTC
-   * =========================
-   */
-    const symbol = text.split(/\s+/)[1]?.toUpperCase();
-
-    if (!symbol) {
-      await sendMessage(
-        c.env,
-        chatId,
-        "Symbol required.\n\nExample: /deleteFavourite BTC",
-      );
-
-      return c.text("OK");
-    }
-
-    await deleteFavourite(c.env, chatId, symbol);
-
-    await sendMessage(c.env, chatId, `${symbol} removed from favourites`);
-  } else if (text === "/listFavourite") {
-
-  /*
-   * =========================
-   * /listFavourite
-   * =========================
-   */
-    const coins = await getFavourite(c.env, chatId);
-
-    if (coins.length === 0) {
-      await sendMessage(c.env, chatId, "Your favourites list is empty.");
-
-      return c.text("OK");
-    }
-
-    /*
-     * At this stage getFavourite()
-     * returns symbols only.
-     *
-     * Therefore we display them as
-     * Telegram commands.
-     */
-    const result = coins.map((coin) => `/${coin.symbol}`).join("\n");
-
-    await sendMessage(c.env, chatId, result);
-  } else if (text === "/listRecent") {
-
-  /*
-   * =========================
-   * /listRecent
-   * =========================
-   */
-    const coins = await getRecentCrypto(c.env);
-
-    if (coins.length === 0) {
-      await sendMessage(c.env, chatId, "No cryptocurrency data available.");
-
-      return c.text("OK");
-    }
-
-    const result = coins
-      .map((coin) => `/${coin.symbol} $${coin.price.toFixed(2)}`)
-      .join("\n");
-
-    await sendMessage(c.env, chatId, result);
-  } else if (/^\/[a-zA-Z0-9]+$/.test(text)) {
-
-  /*
-   * =========================
-   * /BTC
-   * /ETH
-   * /SOL
-   * =========================
-   */
-    const symbol = text.substring(1).toUpperCase();
-
-    if (!isValidSymbol(symbol)) {
-      await sendMessage(c.env, chatId, `Unknown cryptocurrency: ${symbol}`);
-
-      return c.text("OK");
-    }
-
-    const favourite = await isFavourite(c.env, chatId, symbol);
-
-    await sendMessage(
-      c.env,
-      chatId,
-      `${symbol}
-
-Choose period:`,
-      {
-        inline_keyboard: [
-          [
-            {
-              text: "30m",
-              callback_data: `period_${symbol}_30m`,
-            },
-            {
-              text: "1h",
-              callback_data: `period_${symbol}_1h`,
-            },
-          ],
-          [
-            {
-              text: "3h",
-              callback_data: `period_${symbol}_3h`,
-            },
-            {
-              text: "6h",
-              callback_data: `period_${symbol}_6h`,
-            },
-          ],
-          [
-            {
-              text: "12h",
-              callback_data: `period_${symbol}_12h`,
-            },
-            {
-              text: "24h",
-              callback_data: `period_${symbol}_24h`,
-            },
-          ],
-          [
-            {
-              text: favourite ? "Remove from following" : "Add to following",
-              callback_data: favourite ? `delete_${symbol}` : `add_${symbol}`,
-            },
-          ],
-        ],
-      },
-    );
+  if (cryptocurrencies.length === 0) {
+    await sendMessage(env, chatId, "No cryptocurrency data is available yet.");
+    return;
   }
 
-  return c.text("OK");
+  const text = cryptocurrencies
+    .map(
+      (crypto, index) =>
+        `${index + 1}. ${crypto.symbol} — ${formatPrice(crypto.price)}`,
+    )
+    .join("\n");
+
+  await sendMessage(
+    env,
+    chatId,
+    `Recently updated cryptocurrencies:
+
+${text}`,
+  );
+}
+
+async function handleAddFavourite(env: Env, chatId: number, symbol: string) {
+  const normalizedSymbol = symbol.trim().toUpperCase();
+
+  if (!isValidSymbol(normalizedSymbol)) {
+    await sendMessage(
+      env,
+      chatId,
+      `Unknown cryptocurrency: ${normalizedSymbol}`,
+    );
+    return;
+  }
+
+  const alreadyFavourite = await isFavourite(env, chatId, normalizedSymbol);
+
+  if (alreadyFavourite) {
+    await sendMessage(
+      env,
+      chatId,
+      `${normalizedSymbol} is already in your favourites.`,
+    );
+    return;
+  }
+
+  await addFavourite(env, chatId, normalizedSymbol);
+
+  await sendMessage(
+    env,
+    chatId,
+    `${normalizedSymbol} has been added to your favourites.`,
+  );
+}
+
+async function handleDeleteFavourite(env: Env, chatId: number, symbol: string) {
+  const normalizedSymbol = symbol.trim().toUpperCase();
+
+  const alreadyFavourite = await isFavourite(env, chatId, normalizedSymbol);
+
+  if (!alreadyFavourite) {
+    await sendMessage(
+      env,
+      chatId,
+      `${normalizedSymbol} is not in your favourites.`,
+    );
+    return;
+  }
+
+  await deleteFavourite(env, chatId, normalizedSymbol);
+
+  await sendMessage(
+    env,
+    chatId,
+    `${normalizedSymbol} has been removed from your favourites.`,
+  );
+}
+
+async function handleListFavourite(env: Env, chatId: number) {
+  const favourites = await getFavourite(env, chatId);
+
+  if (favourites.length === 0) {
+    await sendMessage(env, chatId, "Your favourites list is empty.");
+    return;
+  }
+
+  const text = favourites
+    .map((favourite, index) => `${index + 1}. ${favourite.symbol}`)
+    .join("\n");
+
+  await sendMessage(
+    env,
+    chatId,
+    `Your favourite cryptocurrencies:
+
+${text}`,
+  );
+}
+
+async function handleCryptoSymbol(env: Env, chatId: number, symbol: string) {
+  const normalizedSymbol = symbol.trim().toUpperCase();
+
+  if (!isValidSymbol(normalizedSymbol)) {
+    await sendMessage(
+      env,
+      chatId,
+      `Unknown cryptocurrency: ${normalizedSymbol}`,
+    );
+    return;
+  }
+
+  const favourite = await isFavourite(env, chatId, normalizedSymbol);
+
+  await sendMessage(
+    env,
+    chatId,
+    `${normalizedSymbol}
+
+Select an action:`,
+    favouriteKeyboard(normalizedSymbol, favourite),
+  );
+}
+
+async function handleHistory(env: Env, chatId: number, symbol: string) {
+  const normalizedSymbol = symbol.trim().toUpperCase();
+
+  if (!isValidSymbol(normalizedSymbol)) {
+    await sendMessage(
+      env,
+      chatId,
+      `Unknown cryptocurrency: ${normalizedSymbol}`,
+    );
+    return;
+  }
+
+  await sendMessage(
+    env,
+    chatId,
+    `${normalizedSymbol}
+
+Select a period:`,
+    periodKeyboard(normalizedSymbol),
+  );
+}
+
+async function handlePeriod(
+  env: Env,
+  chatId: number,
+  symbol: string,
+  period: CryptoPeriod,
+) {
+  const normalizedSymbol = symbol.trim().toUpperCase();
+
+  const history = await getCryptoHistory(env, normalizedSymbol, period);
+
+  if (history.length === 0) {
+    await sendMessage(
+      env,
+      chatId,
+      `No price history found for ${normalizedSymbol} for the selected period.`,
+    );
+    return;
+  }
+
+  const periodLabel =
+    PERIODS.find((item) => item.value === period)?.label ?? period;
+
+  const lines = history
+    .slice(0, 20)
+    .map(
+      (item) =>
+        `${formatDate(item.createdTime)} — ${formatPrice(item.average_price)}`,
+    )
+    .join("\n");
+
+  await sendMessage(
+    env,
+    chatId,
+    `${normalizedSymbol} price history
+Period: ${periodLabel}
+
+${lines}`,
+    periodKeyboard(normalizedSymbol),
+  );
+}
+
+async function handleCommand(env: Env, chatId: number, text: string) {
+  const parts = text.trim().split(/\s+/);
+  const command = parts[0]?.toLowerCase();
+  const argument = parts[1];
+
+  switch (command) {
+    case "/start":
+      await handleStart(env, chatId);
+      return;
+
+    case "/help":
+      await handleHelp(env, chatId);
+      return;
+
+    case "/listrecent":
+      await handleListRecent(env, chatId);
+      return;
+
+    case "/listfavourite":
+    case "/listfavorites":
+    case "/listfavourites":
+      await handleListFavourite(env, chatId);
+      return;
+
+    case "/addtofavourite":
+    case "/addtofavorite":
+      if (!argument) {
+        await sendMessage(env, chatId, "Usage: /addToFavourite BTC");
+        return;
+      }
+
+      await handleAddFavourite(env, chatId, argument);
+      return;
+
+    case "/deletefavourite":
+    case "/deletefavorite":
+      if (!argument) {
+        await sendMessage(env, chatId, "Usage: /deleteFavourite BTC");
+        return;
+      }
+
+      await handleDeleteFavourite(env, chatId, argument);
+      return;
+
+    default:
+      if (command?.startsWith("/")) {
+        await sendMessage(
+          env,
+          chatId,
+          "Unknown command. Use /help to see available commands.",
+        );
+        return;
+      }
+
+      await handleCryptoSymbol(env, chatId, text);
+  }
+}
+
+async function handleCallbackQuery(
+  env: Env,
+  callbackQuery: TelegramCallbackQuery,
+) {
+  const data = callbackQuery.data;
+
+  if (!data || !callbackQuery.message) {
+    return;
+  }
+
+  const chatId = callbackQuery.message.chat.id;
+
+  try {
+    const parts = data.split("_");
+    const action = parts[0];
+
+    if (action === "add") {
+      const symbol = parts[1];
+
+      if (!symbol) {
+        return;
+      }
+
+      await handleAddFavourite(env, chatId, symbol);
+
+      await answerCallbackQuery(
+        env,
+        callbackQuery.id,
+        `${symbol} added to favourites`,
+      );
+
+      return;
+    }
+
+    if (action === "delete") {
+      const symbol = parts[1];
+
+      if (!symbol) {
+        return;
+      }
+
+      await handleDeleteFavourite(env, chatId, symbol);
+
+      await answerCallbackQuery(
+        env,
+        callbackQuery.id,
+        `${symbol} removed from favourites`,
+      );
+
+      return;
+    }
+
+    if (action === "history") {
+      const symbol = parts[1];
+
+      if (!symbol) {
+        return;
+      }
+
+      await handleHistory(env, chatId, symbol);
+
+      await answerCallbackQuery(env, callbackQuery.id);
+
+      return;
+    }
+
+    if (action === "period") {
+      const symbol = parts[1];
+      const period = parts[2] as CryptoPeriod;
+
+      if (!symbol || !period) {
+        return;
+      }
+
+      const validPeriod = PERIODS.some((item) => item.value === period);
+
+      if (!validPeriod) {
+        await answerCallbackQuery(env, callbackQuery.id, "Invalid period");
+        return;
+      }
+
+      await handlePeriod(env, chatId, symbol, period);
+
+      await answerCallbackQuery(env, callbackQuery.id);
+    }
+  } catch (error) {
+    console.error("Telegram callback error:", error);
+
+    await answerCallbackQuery(env, callbackQuery.id, "Something went wrong");
+
+    await sendMessage(
+      env,
+      chatId,
+      "An error occurred while processing the request.",
+    );
+  }
+}
+
+bot.post("/", async (c) => {
+  try {
+    const update = await c.req.json<TelegramUpdate>();
+
+    if (update.callback_query) {
+      await handleCallbackQuery(c.env, update.callback_query);
+
+      return c.json({
+        ok: true,
+      });
+    }
+
+    const message = update.message;
+
+    if (!message?.text) {
+      return c.json({
+        ok: true,
+      });
+    }
+
+    await handleCommand(c.env, message.chat.id, message.text);
+
+    return c.json({
+      ok: true,
+    });
+  } catch (error) {
+    console.error("Telegram update error:", error);
+
+    return c.json(
+      {
+        ok: false,
+        error: "Failed to process Telegram update",
+      },
+      500,
+    );
+  }
 });
 
 export default bot;

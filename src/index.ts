@@ -1,16 +1,17 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { updateCryptoPrices, getCryptoInfo } from "./db/database";
+import coinbaseSymbols from "../symbols/coinbase_symbols.json";
+import cmcSymbols from "../symbols/cmc_symbols.json";
+import kucoinSymbols from "../symbols/kucoin_symbols.json";
+import telegram from "./bot";
+import { getCryptoInfo, updateCryptoPrices } from "./db/database";
 import type { Env } from "./db/database";
 import {
   isValidMarket,
   isValidSymbol,
   type MarketPlatform,
 } from "./validation";
-import coinbaseSymbols from "../symbols/coinbase_symbols.json";
-import cmcSymbols from "../symbols/cmc_symbols.json";
-import kucoinSymbols from "../symbols/kucoin_symbols.json";
-import telegram from "./bot";
+
 import type {
   ScheduledController,
   ExecutionContext,
@@ -35,6 +36,34 @@ app.get("/crypto", async (c) => {
       );
     }
 
+    if (market) {
+      if (!isValidMarket(market)) {
+        return c.json(
+          {
+            error: "Unknown market",
+          },
+          400,
+        );
+      }
+
+      const marketSymbolsMap: Record<string, string[]> = {
+        CoinBase: coinbaseSymbols,
+        CoinMarketCap: cmcSymbols,
+        Kucoin: kucoinSymbols,
+      };
+
+      const symbols = marketSymbolsMap[market];
+
+      if (!symbols?.includes(symbol.toUpperCase())) {
+        return c.json(
+          {
+            error: "Symbol not available on this market",
+          },
+          400,
+        );
+      }
+    }
+
     if (!startTime) {
       return c.json(
         {
@@ -55,43 +84,11 @@ app.get("/crypto", async (c) => {
       );
     }
 
-    let validMarket: MarketPlatform | undefined;
-
-    if (market) {
-      if (!isValidMarket(market)) {
-        return c.json(
-          {
-            error: "Unknown market",
-          },
-          400,
-        );
-      }
-
-      validMarket = market;
-
-      const marketSymbolsMap: Record<string, string[]> = {
-        CoinBase: coinbaseSymbols,
-        CoinMarketCap: cmcSymbols,
-        Kucoin: kucoinSymbols,
-      };
-
-      const symbols = marketSymbolsMap[market];
-
-      if (!symbols?.includes(symbol.toUpperCase())) {
-        return c.json(
-          {
-            error: "Symbol not available on this market",
-          },
-          400,
-        );
-      }
-    }
-
     const data = await getCryptoInfo(
       c.env,
-      symbol.toUpperCase(),
+      symbol,
       startTimeNumber,
-      validMarket,
+      market as MarketPlatform | undefined,
     );
 
     return c.json(data);
@@ -100,7 +97,7 @@ app.get("/crypto", async (c) => {
 
     return c.json(
       {
-        error: "Internal server error",
+        error: "Failed to fetch cryptocurrency data",
       },
       500,
     );
