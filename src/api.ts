@@ -57,21 +57,50 @@ export async function getCoinMarketCapPrices(env: Env): Promise<CryptoInfo> {
 }
 
 export async function getKucoinPrices(): Promise<CryptoInfo> {
-  const response = await fetch("https://api.kucoin.com/api/v1/prices?base=USD");
+  const url = "https://api.kucoin.com/api/v1/prices?base=USD";
+
+  const response = await fetch(url);
+
+  const text = await response.text();
+
+  console.log("Kucoin HTTP status:", response.status);
+  console.log("Kucoin response:", text);
 
   if (!response.ok) {
-    throw new Error("Kucoin API error");
+    throw new Error(
+      `Kucoin API error: HTTP ${response.status} ${response.statusText}`,
+    );
   }
-  const data = await response.json();
+
+  let data: {
+    code: string;
+    data: Record<string, string>;
+  };
+
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error("Kucoin returned invalid JSON");
+  }
+
+  if (data.code !== "200000") {
+    throw new Error(`Kucoin API returned code ${data.code}`);
+  }
+
   const prices: CryptoInfo = {};
+
   for (const [symbol, price] of Object.entries(data.data)) {
     const value = Number(price);
 
     if (!Number.isFinite(value) || value <= 0) {
       continue;
     }
+
     prices[symbol] = value;
   }
+
+  console.log(`Kucoin: ${Object.keys(prices).length}`);
+
   return prices;
 }
 

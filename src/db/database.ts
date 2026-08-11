@@ -106,13 +106,14 @@ export async function getCryptoInfo(
     })
     .from(CRYPTO_DETAILS)
     .where(
-      and(
-        eq(CRYPTO_DETAILS.symbol, symbol),
-        gte(CRYPTO_DETAILS.createdTime, startTime),
-        ...(endTime !== undefined
-          ? [lte(CRYPTO_DETAILS.createdTime, endTime)]
-          : []),
-      ),
+  and(
+    eq(CRYPTO_DETAILS.symbol, symbol),
+    gte(CRYPTO_DETAILS.createdTime, startTime),
+    ...(endTime !== undefined
+      ? [lte(CRYPTO_DETAILS.createdTime, endTime)]
+      : []),
+  ),
+
     )
     .groupBy(sql`CAST(${CRYPTO_DETAILS.createdTime} / 300000 AS INTEGER)`)
     .orderBy(desc(sql`MAX(${CRYPTO_DETAILS.createdTime})`));
@@ -188,19 +189,6 @@ export async function updateCryptoPrices(env: Env) {
     getKucoinPrices(),
     // getCoinMarketCapPrice(env)
   ]);
-  console.log(
-    "CoinBase:",
-    results[0].status === "fulfilled"
-      ? Object.keys(results[0].value).length
-      : results[0].reason,
-  );
-
-  console.log(
-    "Kucoin:",
-    results[1].status === "fulfilled"
-      ? Object.keys(results[1].value).length
-      : results[1].reason,
-  );
 
   const rows: Array<{
     symbol: string;
