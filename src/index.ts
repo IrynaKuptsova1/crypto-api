@@ -26,6 +26,51 @@ app.get("/crypto", async (c) => {
     const symbol = c.req.query("symbol");
     const market = c.req.query("market");
     const startTime = c.req.query("startTime");
+    const endTime = c.req.query("endTime");
+
+    if (!startTime) {
+      return c.json(
+        {
+          error: "startTime is required",
+        },
+        400,
+      );
+    }
+
+    const startTimeNumber = Number(startTime);
+
+    if (!Number.isFinite(startTimeNumber)) {
+      return c.json(
+        {
+          error: "startTime must be milliseconds",
+        },
+        400,
+      );
+    }
+
+    let endTimeNumber: number | undefined;
+
+    if (endTime !== undefined) {
+      endTimeNumber = Number(endTime);
+
+      if (!Number.isFinite(endTimeNumber)) {
+        return c.json(
+          {
+            error: "endTime must be milliseconds",
+          },
+          400,
+        );
+      }
+
+      if (endTimeNumber < startTimeNumber) {
+        return c.json(
+          {
+            error: "endTime must be greater than or equal to startTime",
+          },
+          400,
+        );
+      }
+    }
 
     if (!symbol || !isValidSymbol(symbol)) {
       return c.json(
@@ -64,30 +109,11 @@ app.get("/crypto", async (c) => {
       }
     }
 
-    if (!startTime) {
-      return c.json(
-        {
-          error: "startTime is required",
-        },
-        400,
-      );
-    }
-
-    const startTimeNumber = Number(startTime);
-
-    if (!Number.isFinite(startTimeNumber) || startTimeNumber <= 0) {
-      return c.json(
-        {
-          error: "startTime must be milliseconds",
-        },
-        400,
-      );
-    }
-
     const data = await getCryptoInfo(
       c.env,
       symbol,
       startTimeNumber,
+      endTimeNumber,
       market as MarketPlatform | undefined,
     );
 

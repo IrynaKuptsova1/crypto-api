@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import { eq, and, gte, desc, sql } from "drizzle-orm";
+import { eq, and, gte, desc, sql, lte } from "drizzle-orm";
 import type { D1Database } from "@cloudflare/workers-types";
 
 import { CRYPTO_DETAILS, FAVORITES } from "./schema";
@@ -54,6 +54,7 @@ export async function getCryptoInfo(
   env: Env,
   symbol: string,
   startTime: number,
+  endTime?: number,
   market?: MarketPlatform,
 ): Promise<CryptoResponse[]> {
   const db = getDb(env);
@@ -74,6 +75,9 @@ export async function getCryptoInfo(
           eq(CRYPTO_DETAILS.symbol, symbol),
           eq(CRYPTO_DETAILS.market, market),
           gte(CRYPTO_DETAILS.createdTime, startTime),
+          ...(endTime !== undefined
+            ? [lte(CRYPTO_DETAILS.createdTime, endTime)]
+            : []),
         ),
       )
       .orderBy(desc(CRYPTO_DETAILS.createdTime));
@@ -105,6 +109,9 @@ export async function getCryptoInfo(
       and(
         eq(CRYPTO_DETAILS.symbol, symbol),
         gte(CRYPTO_DETAILS.createdTime, startTime),
+        ...(endTime !== undefined
+          ? [lte(CRYPTO_DETAILS.createdTime, endTime)]
+          : []),
       ),
     )
     .groupBy(sql`CAST(${CRYPTO_DETAILS.createdTime} / 300000 AS INTEGER)`)
@@ -181,6 +188,19 @@ export async function updateCryptoPrices(env: Env) {
     getKucoinPrices(),
     // getCoinMarketCapPrice(env)
   ]);
+  console.log(
+    "CoinBase:",
+    results[0].status === "fulfilled"
+      ? Object.keys(results[0].value).length
+      : results[0].reason,
+  );
+
+  console.log(
+    "Kucoin:",
+    results[1].status === "fulfilled"
+      ? Object.keys(results[1].value).length
+      : results[1].reason,
+  );
 
   const rows: Array<{
     symbol: string;
