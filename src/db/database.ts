@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and, gte, desc, sql, lte } from "drizzle-orm";
-import type { Artifacts, D1Database } from "@cloudflare/workers-types";
+import type { D1Database } from "@cloudflare/workers-types";
 
 import { CRYPTO_DETAILS, FAVORITES } from "./schema";
 import {

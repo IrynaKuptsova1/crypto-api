@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import coinbaseSymbols from "../symbols/coinbase_symbols.json";
 import cmcSymbols from "../symbols/cmc_symbols.json";
 import kucoinSymbols from "../symbols/kucoin_symbols.json";
+import coinstatsSymbols from "../symbols/coinstats_symbols.json"
 import telegram from "./bot";
 import { getCryptoInfo, updateCryptoPrices } from "./db/database";
 import type { Env } from "./db/database";
@@ -95,6 +96,7 @@ app.get("/crypto", async (c) => {
         CoinBase: coinbaseSymbols,
         CoinMarketCap: cmcSymbols,
         Kucoin: kucoinSymbols,
+        Coinstats: coinstatsSymbols,
       };
 
       const symbols = marketSymbolsMap[market];
