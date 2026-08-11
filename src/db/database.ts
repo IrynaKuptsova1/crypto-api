@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { eq, and, gte, desc, sql, lte } from "drizzle-orm";
-import type { D1Database } from "@cloudflare/workers-types";
+import type { Artifacts, D1Database } from "@cloudflare/workers-types";
 
 import { CRYPTO_DETAILS, FAVORITES } from "./schema";
 import {
@@ -12,6 +12,7 @@ import {
 import {
   getCoinBasePrices,
   getCoinMarketCapPrices,
+  getCoinStatsPrices,
   getKucoinPrices,
 } from "../api";
 
@@ -19,6 +20,7 @@ export type Env = {
   crypto_db: D1Database;
   TELEGRAM_TOKEN: string;
   CMC_API_KEY?: string;
+  COINSTATS_API_KEY?: string;
 };
 
 export type CryptoAverage = {
@@ -106,14 +108,13 @@ export async function getCryptoInfo(
     })
     .from(CRYPTO_DETAILS)
     .where(
-  and(
-    eq(CRYPTO_DETAILS.symbol, symbol),
-    gte(CRYPTO_DETAILS.createdTime, startTime),
-    ...(endTime !== undefined
-      ? [lte(CRYPTO_DETAILS.createdTime, endTime)]
-      : []),
-  ),
-
+      and(
+        eq(CRYPTO_DETAILS.symbol, symbol),
+        gte(CRYPTO_DETAILS.createdTime, startTime),
+        ...(endTime !== undefined
+          ? [lte(CRYPTO_DETAILS.createdTime, endTime)]
+          : []),
+      ),
     )
     .groupBy(sql`CAST(${CRYPTO_DETAILS.createdTime} / 300000 AS INTEGER)`)
     .orderBy(desc(sql`MAX(${CRYPTO_DETAILS.createdTime})`));
@@ -186,8 +187,9 @@ export async function updateCryptoPrices(env: Env) {
 
   const results = await Promise.allSettled([
     getCoinBasePrices(),
+    getCoinMarketCapPrices(env),
     getKucoinPrices(),
-    // getCoinMarketCapPrice(env)
+    getCoinStatsPrices(env),
   ]);
 
   const rows: Array<{

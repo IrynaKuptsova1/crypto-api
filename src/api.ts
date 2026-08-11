@@ -57,49 +57,61 @@ export async function getCoinMarketCapPrices(env: Env): Promise<CryptoInfo> {
 }
 
 export async function getKucoinPrices(): Promise<CryptoInfo> {
-  const url = "https://api.kucoin.com/api/v1/prices?base=USD";
-
-  const response = await fetch(url);
-
-  const text = await response.text();
-
-  console.log("Kucoin HTTP status:", response.status);
-  console.log("Kucoin response:", text);
+  const response = await fetch("https://api.kucoin.com/api/v1/prices?base=USD");
 
   if (!response.ok) {
-    throw new Error(
-      `Kucoin API error: HTTP ${response.status} ${response.statusText}`,
-    );
+    throw new Error("Kucoin API error");
   }
-
-  let data: {
-    code: string;
-    data: Record<string, string>;
-  };
-
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error("Kucoin returned invalid JSON");
-  }
-
-  if (data.code !== "200000") {
-    throw new Error(`Kucoin API returned code ${data.code}`);
-  }
-
+  const data = await response.json();
   const prices: CryptoInfo = {};
-
   for (const [symbol, price] of Object.entries(data.data)) {
     const value = Number(price);
 
     if (!Number.isFinite(value) || value <= 0) {
       continue;
     }
-
     prices[symbol] = value;
   }
+  return prices;
+}
+export async function getCoinStatsPrices(env: Env): Promise<CryptoInfo> {
+  if (!env.COINSTATS_API_KEY) {
+    throw new Error("COINSTATS_API_KEY is missing");
+  }
+  const response = await fetch(
+    "https://api.coinstats.app/v1/coins?limit=1000",
+    {
+      headers: {
+        "X-API-KEY": env.COINSTATS_API_KEY,
+        accept: "application/json",
+      },
+    },
+  );
 
-  console.log(`Kucoin: ${Object.keys(prices).length}`);
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("CoinStats API error:", errorText);
+    throw new Error(`CoinStats API error: ${response.status}`);
+  }
+
+  const data = (await response.json()) as {
+    result: Array<{ symbol: string; price: number }>;
+    meta: { itemCount: number };
+  };
+
+  const prices: CryptoInfo = {};
+  for (const coin of data.result) {
+    const price = Number(coin.price);
+
+    if (!Number.isFinite(price) || price <= 0) {
+      continue;
+    }
+    if (!prices[coin.symbol]) {
+      prices[coin.symbol] = price;
+    }
+  }
+
+  console.log(`CoinStats fetched: ${Object.keys(prices).length} coins`);
 
   return prices;
 }
