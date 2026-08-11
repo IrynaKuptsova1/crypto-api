@@ -96,7 +96,7 @@ app.get("/crypto", async (c) => {
         CoinBase: coinbaseSymbols,
         CoinMarketCap: cmcSymbols,
         Kucoin: kucoinSymbols,
-        Coinstats: coinstatsSymbols,
+        CoinStats: coinstatsSymbols,
       };
 
       const symbols = marketSymbolsMap[market];
